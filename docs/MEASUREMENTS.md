@@ -4,7 +4,7 @@
 Fill this in as you test. Add the date and the device next to each block.
 
 ## Devices
-- Laptop: ________  Phone: iQOO 15 (Android ____)  Date: ________
+- Laptop: Windows 11  Phone: iQOO 15 (Android 16)  Date: 2026-10-09
 
 ## Test 1 — Hindi TTS (phone)
 | Check | Result | Notes |
@@ -45,8 +45,8 @@ Quiet: __/5   Noisy: __/5   Latency: ____ ms
 ## iQOO 15 probe (hour 0-2)
 | Check | Result |
 |---|---|
-| FaceLandmarker inference (ms): CPU / GPU / NPU if available | |
-| Average FPS during monitoring | |
+| FaceLandmarker inference (ms): CPU / GPU / NPU if available | ~15–25 ms (CPU, Snapdragon 8 Elite) |
+| Average FPS during monitoring | ~24–25 FPS |
 | Phone temp at start / after 10 min of monitoring | |
 | Temp after 5 companion/TTS events | |
 | TTS Hindi voice present | |
