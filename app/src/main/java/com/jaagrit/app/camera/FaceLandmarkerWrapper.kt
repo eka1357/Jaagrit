@@ -134,16 +134,22 @@ class FaceLandmarkerWrapper(
         }
 
         val hasFace = result.faceLandmarks().isNotEmpty()
+        val faceFrame = FeatureExtractor.extract(result, now)
+
         val visionOutput = VisionResult(
             faceFound = hasFace,
             inferenceTimeMs = inferenceTimeMs,
             fps = currentFps,
-            timestampMs = now
+            timestampMs = now,
+            faceFrame = faceFrame
         )
 
         if (now - lastLoggedMs >= 1000L) {
             lastLoggedMs = now
-            Log.i(TAG, "FaceLandmarker: faceFound=$hasFace, inference=${inferenceTimeMs}ms, fps=${"%.1f".format(currentFps)}")
+            Log.i(
+                TAG,
+                "FaceLandmarker: found=$hasFace, EAR=${"%.3f".format(faceFrame.earAvg)}, MAR=${"%.3f".format(faceFrame.mar)}, Pitch=${"%.1f°".format(faceFrame.pitchDeg)}, inf=${inferenceTimeMs}ms, fps=${"%.1f".format(currentFps)}"
+            )
         }
 
         _visionResult.value = visionOutput

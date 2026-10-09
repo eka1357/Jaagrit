@@ -11,7 +11,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -123,6 +125,9 @@ private fun ActiveMonitoringContent(
     val cameraController = remember { CameraController(context, landmarkerWrapper) }
 
     val visionResult by landmarkerWrapper.visionResult.collectAsState()
+    val frame = visionResult.faceFrame
+
+    var showDebugPanel by remember { mutableStateOf(false) }
 
     // Dispose only when leaving the screen or lifecycle is destroyed
     DisposableEffect(lifecycleOwner) {
@@ -138,10 +143,18 @@ private fun ActiveMonitoringContent(
         verticalArrangement = Arrangement.SpaceBetween,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Top Header
+        // Top Header with Long-Press gesture for Debug Panel (AGENTS.md Rule 7)
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(top = 8.dp)
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onLongPress = {
+                            showDebugPanel = !showDebugPanel
+                        }
+                    )
+                }
         ) {
             Text(
                 text = "JAAGRIT MONITORING",
@@ -151,13 +164,13 @@ private fun ActiveMonitoringContent(
                 color = MaterialTheme.colorScheme.primary
             )
             Text(
-                text = "Live Driver Alertness Stream",
+                text = if (showDebugPanel) "Telemetry Panel Active (long-press to close)" else "Live Driver Alertness Stream",
                 fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.outline
+                color = if (showDebugPanel) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline
             )
         }
 
-        // Camera Preview + Status Card
+        // Camera Preview + Status Card / Debug Telemetry
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxWidth()
@@ -190,7 +203,7 @@ private fun ActiveMonitoringContent(
                 )
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // FACE FOUND / NO FACE status banner
             val statusColor = if (visionResult.faceFound) Color(0xFF2E7D32) else Color(0xFFC62828)
@@ -202,7 +215,7 @@ private fun ActiveMonitoringContent(
                 modifier = Modifier.padding(horizontal = 16.dp)
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
@@ -217,62 +230,155 @@ private fun ActiveMonitoringContent(
                         text = statusText,
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
+                        fontSize = 15.sp,
                         letterSpacing = 1.sp
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // Metrics: Inference ms and FPS
-            Card(
-                modifier = Modifier.fillMaxWidth(0.85f),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceAround,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "Inference",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                        Text(
-                            text = "${visionResult.inferenceTimeMs} ms",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .width(1.dp)
-                            .height(30.dp)
-                            .background(MaterialTheme.colorScheme.outlineVariant)
+            // Debug Telemetry Panel (shown on long-pressing title)
+            if (showDebugPanel) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
                     )
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Text(
-                            text = "Frame Rate",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                        Text(
-                            text = "%.1f FPS".format(visionResult.fps),
-                            fontSize = 20.sp,
+                            text = "DEBUG TELEMETRY (LIVE)",
+                            style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.tertiary
                         )
+
+                        // EAR metrics
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "EAR L: ${"%.3f".format(frame.earL)} | R: ${"%.3f".format(frame.earR)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "AVG: ${"%.3f".format(frame.earAvg)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        // MAR metric
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Mouth (MAR): ${"%.3f".format(frame.mar)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = if (frame.mar > 0.45f) "YAWN" else "NORMAL",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (frame.mar > 0.45f) Color(0xFFE65100) else Color(0xFF2E7D32)
+                            )
+                        }
+
+                        // Head pose (positive pitch = head down)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Pitch: ${"%+.1f°".format(frame.pitchDeg)} (down+)",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Yaw: ${"%+.1f°".format(frame.yawDeg)} | Roll: ${"%+.1f°".format(frame.rollDeg)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // Inference latency and FPS
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Inference: ${visionResult.inferenceTimeMs} ms",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                            Text(
+                                text = "FPS: ${"%.1f".format(visionResult.fps)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Minimal Driver View: Inference ms and FPS
+                Card(
+                    modifier = Modifier.fillMaxWidth(0.85f),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceAround,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "Inference",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                            Text(
+                                text = "${visionResult.inferenceTimeMs} ms",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(28.dp)
+                                .background(MaterialTheme.colorScheme.outlineVariant)
+                        )
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "Frame Rate",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                            Text(
+                                text = "%.1f FPS".format(visionResult.fps),
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
