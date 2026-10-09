@@ -18,7 +18,8 @@ import kotlin.math.roundToInt
 class FatigueEngine(
     val config: Config = Config.DEFAULT,
     val clock: Clock = Clock.SYSTEM,
-    val baseline: Baseline = Baseline.DEFAULT
+    val baseline: Baseline = Baseline.DEFAULT,
+    val ladder: InterventionLadder = InterventionLadder(config, clock)
 ) {
     // Drive start timestamp
     private var driveStartTimeMs: Long = clock.nowMs()
@@ -54,6 +55,7 @@ class FatigueEngine(
 
         // 1. Handle Face Lost (ENG-4)
         if (!f.faceFound) {
+            ladder.onFaceLost(now)
             return handleFaceLost(now)
         }
 
@@ -123,7 +125,6 @@ class FatigueEngine(
         val alertnessScore = smoothedAlertness.roundToInt().coerceIn(0, 100)
 
         // 8. Ladder Level Arbitration (ENG-2, D12)
-        // Level is higher of raw trigger and score band: max(rawTriggerLevel, scoreBandLevel)
         val scoreBandLevel = when {
             alertnessScore >= config.alertnessBandAlertMin -> Level.L0
             alertnessScore >= config.alertnessBandCautionMin -> Level.L1
@@ -132,21 +133,48 @@ class FatigueEngine(
         }
 
         val rawTriggerLevel = when {
-            currentClosureDuration >= config.closureConfirmMs -> Level.L3 // Closure >= 2.5 s forces CRITICAL
+            currentClosureDuration >= config.closureConfirmMs -> Level.L3
             perclos >= config.perclosL2 -> Level.L2
             blinkRatio >= config.blinkRateL1Increase && (now - driveStartTimeMs >= config.blinkRateL1SustainMs) -> Level.L1
             else -> Level.L0
         }
 
-        val activeLevel = maxOf(rawTriggerLevel, scoreBandLevel)
+        // 9. Intervention ladder onFrame
+        val ladderActions = ladder.onFrame(
+            faceFound = true,
+            isEyesClosed = isClosed,
+            closureDurationMs = currentClosureDuration,
+            pitchDeg = f.pitchDeg,
+            now = now
+        )
 
-        // State mapping: Hard override if eyes closed >= 2.5 s -> always CRITICAL
+        // If ladder processed an awake response (e.g. eyes open >= 3s), reset score & closure history
+        if (ladderActions.any { it is Action.Log && it.detail.contains("Response processed") }) {
+            closureStartTimeMs = null
+            lastClosedFrameTimeMs = null
+            recentClosures.clear()
+            slidingWindow.clear()
+            smoothedAlertness = 100.0
+            isFirstScoreSample = true
+        }
+
+        val activeLevel = maxOf(ladder.currentLadderLevel, rawTriggerLevel, scoreBandLevel)
+
+        // State mapping: Hard override if eyes closed >= 2.5 s or activeLevel in [L3, L4, L5] -> CRITICAL
         val activeState = when {
             currentClosureDuration >= config.closureConfirmMs -> DriverState.CRITICAL
-            activeLevel == Level.L3 -> DriverState.CRITICAL
+            activeLevel in listOf(Level.L3, Level.L4, Level.L5) -> DriverState.CRITICAL
             activeLevel == Level.L2 -> DriverState.FATIGUED
             activeLevel == Level.L1 -> DriverState.CAUTION
             else -> DriverState.NORMAL
+        }
+
+        if (ladder.isL5Active) {
+            reasons.add(0, "L5: Unresponsive - SMS dispatched")
+        } else if (ladder.isL4Active) {
+            reasons.add(0, "L4: Unresponsive to alarm - Family voice active")
+        } else if (ladder.isL3Active) {
+            reasons.add(0, "L3: Critical drowsiness detected")
         }
 
         return EngineOutput(
@@ -154,12 +182,12 @@ class FatigueEngine(
             level = activeLevel,
             alertness = alertnessScore,
             reasons = reasons,
-            actions = emptyList()
+            actions = ladderActions
         )
     }
 
     /**
-     * Handle periodic clock ticks (e.g. every 100ms) for timer checks like the 30s FACE_LOST reminder.
+     * Handle periodic clock ticks (e.g. every 100ms) for timer checks like L4/L5, cooldowns, and FACE_LOST reminder.
      */
     fun onTick(): EngineOutput {
         val now = clock.nowMs()
@@ -175,26 +203,82 @@ class FatigueEngine(
             return EngineOutput(
                 state = DriverState.FACE_LOST,
                 level = Level.L0,
-                alertness = smoothedAlertness.roundToInt(),
+                alertness = smoothedAlertness.roundToInt().coerceIn(0, 100),
                 reasons = listOf("Face not visible in camera"),
                 actions = actions
             )
         }
 
+        // Tick ladder timers
+        actions.addAll(ladder.onTick(now, faceFound = true))
+
+        val activeLevel = maxOf(ladder.currentLadderLevel, currentScoreBandLevel())
+        val activeState = when {
+            activeLevel in listOf(Level.L3, Level.L4, Level.L5) -> DriverState.CRITICAL
+            activeLevel == Level.L2 -> DriverState.FATIGUED
+            activeLevel == Level.L1 -> DriverState.CAUTION
+            else -> DriverState.NORMAL
+        }
+
+        val reasons = mutableListOf<String>()
+        if (ladder.isL5Active) {
+            reasons.add("L5: Unresponsive - SMS dispatched")
+        } else if (ladder.isL4Active) {
+            reasons.add("L4: Unresponsive to alarm - Family voice active")
+        } else if (ladder.isL3Active) {
+            reasons.add("L3: Critical drowsiness detected")
+        }
+
         return EngineOutput(
-            state = DriverState.NORMAL,
-            level = Level.L0,
-            alertness = smoothedAlertness.roundToInt(),
-            reasons = emptyList(),
-            actions = emptyList()
+            state = activeState,
+            level = activeLevel,
+            alertness = smoothedAlertness.roundToInt().coerceIn(0, 100),
+            reasons = reasons,
+            actions = actions
         )
     }
 
     /**
-     * Handle voice events (commands, answers, dismiss).
+     * Handle voice events (commands, answers, dismiss, I'M AWAKE).
      */
     fun onVoice(e: VoiceEvent): EngineOutput {
-        return onTick()
+        val now = clock.nowMs()
+        val actions = mutableListOf<Action>()
+        if (e is VoiceEvent.ImAwake || e is VoiceEvent.Answer || e is VoiceEvent.Command) {
+            actions.addAll(ladder.processResponse(now, e.toString()))
+            closureStartTimeMs = null
+            lastClosedFrameTimeMs = null
+            recentClosures.clear()
+            slidingWindow.clear()
+            smoothedAlertness = 100.0
+            isFirstScoreSample = true
+        }
+
+        val activeLevel = maxOf(ladder.currentLadderLevel, currentScoreBandLevel())
+        val activeState = when {
+            faceLostStartTimeMs != null -> DriverState.FACE_LOST
+            activeLevel in listOf(Level.L3, Level.L4, Level.L5) -> DriverState.CRITICAL
+            activeLevel == Level.L2 -> DriverState.FATIGUED
+            activeLevel == Level.L1 -> DriverState.CAUTION
+            else -> DriverState.NORMAL
+        }
+
+        val reasons = mutableListOf<String>()
+        if (ladder.isL5Active) {
+            reasons.add("L5: Unresponsive - SMS dispatched")
+        } else if (ladder.isL4Active) {
+            reasons.add("L4: Unresponsive to alarm - Family voice active")
+        } else if (ladder.isL3Active) {
+            reasons.add("L3: Critical drowsiness detected")
+        }
+
+        return EngineOutput(
+            state = activeState,
+            level = activeLevel,
+            alertness = smoothedAlertness.roundToInt().coerceIn(0, 100),
+            reasons = reasons,
+            actions = actions
+        )
     }
 
     /** Reset engine session for a new drive */
@@ -210,6 +294,17 @@ class FatigueEngine(
         slidingWindow.clear()
         recentBlinks.clear()
         headDroopStartTimeMs = null
+        ladder.reset(startTimeMs)
+    }
+
+    private fun currentScoreBandLevel(): Level {
+        val score = smoothedAlertness.roundToInt().coerceIn(0, 100)
+        return when {
+            score >= config.alertnessBandAlertMin -> Level.L0
+            score >= config.alertnessBandCautionMin -> Level.L1
+            score >= config.alertnessBandFatiguedMin -> Level.L2
+            else -> Level.L3
+        }
     }
 
     // --- Private Helper Logic ---
