@@ -24,6 +24,10 @@ class CameraController(
     private var cameraProvider: ProcessCameraProvider? = null
     private var cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
+    // Keep track of this controller's use cases to avoid global unbindAll (AUDIT-005)
+    private var boundPreview: Preview? = null
+    private var boundImageAnalysis: ImageAnalysis? = null
+
     fun startCamera(
         lifecycleOwner: LifecycleOwner,
         previewView: PreviewView? = null,
@@ -56,7 +60,15 @@ class CameraController(
 
                 val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
 
-                cameraProvider?.unbindAll()
+                // Unbind only this controller's previously bound use cases (AUDIT-005)
+                val oldUseCases = listOfNotNull(boundPreview, boundImageAnalysis).toTypedArray()
+                if (oldUseCases.isNotEmpty()) {
+                    cameraProvider?.unbind(*oldUseCases)
+                }
+
+                boundPreview = preview
+                boundImageAnalysis = imageAnalysis
+
                 cameraProvider?.bindToLifecycle(
                     lifecycleOwner,
                     cameraSelector,
@@ -75,8 +87,14 @@ class CameraController(
 
     fun stopCamera() {
         try {
-            cameraProvider?.unbindAll()
-            Log.i(TAG, "CameraX use cases unbound")
+            // Unbind only this controller's use cases, never process-wide unbindAll (AUDIT-005)
+            val useCases = listOfNotNull(boundPreview, boundImageAnalysis).toTypedArray()
+            if (useCases.isNotEmpty()) {
+                cameraProvider?.unbind(*useCases)
+            }
+            boundPreview = null
+            boundImageAnalysis = null
+            Log.i(TAG, "CameraX use cases unbound for controller")
         } catch (e: Exception) {
             Log.e(TAG, "Error unbinding CameraX", e)
         }

@@ -65,6 +65,8 @@ data class Config(
     val blinkRateL1Increase: Float = BLINK_RATE_L1_INCREASE,
     // Duration blink rate elevation must be sustained to trigger L1
     val blinkRateL1SustainMs: Long = BLINK_RATE_L1_SUSTAIN_MS,
+    // Feature gate for blink rate signal (AUDIT-012, gated until M9a)
+    val blinkSignalEnabled: Boolean = BLINK_SIGNAL_ENABLED,
 
     // Calibration settings (CAL-1, D4, D9)
     val calibrationOpenMs: Long = if (demoTimers) QUICK_CALIBRATION_OPEN_MS else CALIBRATION_OPEN_MS,
@@ -142,6 +144,7 @@ data class Config(
         const val PERCLOS_MAX_PENALTY_THRESHOLD = 0.25f
         const val BLINK_RATE_L1_INCREASE = 0.20f
         const val BLINK_RATE_L1_SUSTAIN_MS = 30000L
+        const val BLINK_SIGNAL_ENABLED = false // Gated until M9a (AUDIT-012)
 
         // Calibration
         const val CALIBRATION_OPEN_MS = 10000L

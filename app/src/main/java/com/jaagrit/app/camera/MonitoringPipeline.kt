@@ -1,12 +1,14 @@
 package com.jaagrit.app.camera
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import androidx.camera.view.PreviewView
 import androidx.lifecycle.LifecycleOwner
 import com.jaagrit.app.data.BaselineStore
 import com.jaagrit.app.engine.Action
 import com.jaagrit.app.engine.Baseline
+import com.jaagrit.app.engine.Clock
 import com.jaagrit.app.engine.Config
 import com.jaagrit.app.engine.DriverState
 import com.jaagrit.app.engine.EngineOutput
@@ -21,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -71,13 +74,24 @@ class MonitoringPipeline(
     private val alarmToneGenerator: AlarmToneGenerator = AlarmToneGenerator(),
     private val vibeManager: VibeManager = VibeManager(context),
     private val baselineStore: BaselineStore = BaselineStore(context),
-    config: Config = Config.DEFAULT
+    val config: Config = Config.DEFAULT,
+    val clock: Clock = Clock { SystemClock.elapsedRealtime() }
 ) {
     private val tag = "JAAGRIT"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // Confinement to single thread/coroutine (AUDIT-003)
+    private val engineDispatcher = Dispatchers.Default.limitedParallelism(1)
 
-    private var engine: FatigueEngine = FatigueEngine(config = config)
-    private val driveStartTimeMs = System.currentTimeMillis()
+    private sealed interface PipelineEvent {
+        data class Vision(val result: VisionResult) : PipelineEvent
+        object Tick : PipelineEvent
+        object ImAwake : PipelineEvent
+    }
+
+    private val eventChannel = Channel<PipelineEvent>(capacity = Channel.UNLIMITED)
+
+    private var engine: FatigueEngine = FatigueEngine(config = config, clock = clock)
+    private val driveStartTimeMs: Long = clock.nowMs()
     private var totalAlerts = 0
 
     private val _uiState = MutableStateFlow(MonitoringUiState())
@@ -96,26 +110,33 @@ class MonitoringPipeline(
         // 1. Start CameraX preview
         cameraController.startCamera(lifecycleOwner, previewView)
 
-        // 2. Load driver baseline and initialize engine
-        scope.launch {
+        // 2. Sequential engine loop confined to engineDispatcher (AUDIT-003)
+        scope.launch(engineDispatcher) {
             val baseline = baselineStore.getBaseline() ?: Baseline.DEFAULT
             Log.d(tag, "Loaded driver baseline: threshold=${baseline.threshold}, isValid=${baseline.isValid}")
-            engine = FatigueEngine(baseline = baseline)
+            engine = FatigueEngine(config = config, clock = clock, baseline = baseline)
             engine.resetDrive(driveStartTimeMs)
 
-            // 3. Consume vision frames from live-stream callback
-            launch {
-                landmarkerWrapper.visionResult.collect { result ->
-                    processVisionResult(result)
+            for (event in eventChannel) {
+                when (event) {
+                    is PipelineEvent.Vision -> processVisionResult(event.result)
+                    is PipelineEvent.Tick -> processTick()
+                    is PipelineEvent.ImAwake -> processImAwake()
                 }
             }
+        }
 
-            // 4. Periodic 100ms ticker for timers and engine ticks
-            launch {
-                while (isActive) {
-                    delay(100L)
-                    processTick()
-                }
+        // 3. Producers
+        scope.launch {
+            landmarkerWrapper.visionResult.collect { result ->
+                eventChannel.send(PipelineEvent.Vision(result))
+            }
+        }
+
+        scope.launch {
+            while (isActive) {
+                delay(100L)
+                eventChannel.send(PipelineEvent.Tick)
             }
         }
     }
@@ -125,24 +146,13 @@ class MonitoringPipeline(
      */
     fun onImAwake() {
         Log.i(tag, "User tapped 'I'M AWAKE' — silencing alerts and resetting state")
-        // Silence actuators immediately
+        // Immediate physical silencing for instant tactile/auditory feedback
         alarmToneGenerator.stopAlarm()
         vibeManager.cancel()
         speaker.stop()
 
-        // Inform engine of the awake response
-        val output = engine.onVoice(VoiceEvent.ImAwake)
-        executeActions(output.actions)
-
-        _uiState.update { current ->
-            current.copy(
-                state = output.state,
-                level = output.level,
-                alertness = output.alertness,
-                reasons = output.reasons,
-                isRedFlashActive = false
-            )
-        }
+        // Confined processing via event channel (AUDIT-003)
+        eventChannel.trySend(PipelineEvent.ImAwake)
     }
 
     /**
@@ -151,62 +161,42 @@ class MonitoringPipeline(
     fun release() {
         Log.i(tag, "Releasing MonitoringPipeline")
         isStarted = false
+        scope.cancel()
+        eventChannel.close()
         alarmToneGenerator.release()
         vibeManager.cancel()
         speaker.shutdown()
         cameraController.release()
-        scope.cancel()
     }
 
-    // --- Private Processing Logic ---
+    // --- Private Processing Logic (Sequential on engineDispatcher) ---
 
     private fun processVisionResult(result: VisionResult) {
         val output = engine.onFrame(result.faceFrame)
-        executeActions(output.actions)
-
-        val isCriticalAlert = output.state == DriverState.CRITICAL || output.level in listOf(Level.L3, Level.L4, Level.L5)
-        val shouldRedFlash = if (output.state == DriverState.FACE_LOST || output.state == DriverState.NORMAL) {
-            false
-        } else {
-            isCriticalAlert || _uiState.value.isRedFlashActive
-        }
-
-        // If transitioning out of critical, silence alarms
-        if (!isCriticalAlert && _uiState.value.isRedFlashActive) {
-            alarmToneGenerator.stopAlarm()
-            vibeManager.cancel()
-        }
-
-        _uiState.update { current ->
-            current.copy(
-                alertness = output.alertness,
-                state = output.state,
-                level = output.level,
-                reasons = output.reasons,
-                isRedFlashActive = shouldRedFlash,
-                faceFound = result.faceFound,
-                inferenceTimeMs = result.inferenceTimeMs,
-                fps = result.fps,
-                faceFrame = result.faceFrame,
-                driveTimeMs = System.currentTimeMillis() - driveStartTimeMs,
-                alertCount = totalAlerts
-            )
-        }
+        handleEngineOutput(output, faceFound = result.faceFound, visionResult = result)
     }
 
     private fun processTick() {
         val output = engine.onTick()
+        handleEngineOutput(output, faceFound = _uiState.value.faceFound, visionResult = null)
+    }
+
+    private fun processImAwake() {
+        val output = engine.onVoice(VoiceEvent.ImAwake)
+        handleEngineOutput(output, faceFound = _uiState.value.faceFound, visionResult = null)
+    }
+
+    private fun handleEngineOutput(
+        output: EngineOutput,
+        faceFound: Boolean,
+        visionResult: VisionResult?
+    ) {
         executeActions(output.actions)
 
-        val isCriticalAlert = output.state == DriverState.CRITICAL || output.level in listOf(Level.L3, Level.L4, Level.L5)
-        val shouldRedFlash = if (output.state == DriverState.FACE_LOST || output.state == DriverState.NORMAL) {
-            false
-        } else {
-            isCriticalAlert || _uiState.value.isRedFlashActive
-        }
-
-        // If transitioning out of critical, silence alarms
-        if (!isCriticalAlert && _uiState.value.isRedFlashActive) {
+        // AUDIT-004: derive alarm, vibration, and red flash state from ladder state (output.isAlertActive)
+        // Alarm and vibration keep running through FACE_LOST and stop only on response (which clears isAlertActive)
+        val isAlertActive = output.isAlertActive
+        if (!isAlertActive && _uiState.value.isRedFlashActive) {
             alarmToneGenerator.stopAlarm()
             vibeManager.cancel()
         }
@@ -217,8 +207,12 @@ class MonitoringPipeline(
                 state = output.state,
                 level = output.level,
                 reasons = output.reasons,
-                isRedFlashActive = shouldRedFlash,
-                driveTimeMs = System.currentTimeMillis() - driveStartTimeMs,
+                isRedFlashActive = isAlertActive,
+                faceFound = faceFound,
+                inferenceTimeMs = visionResult?.inferenceTimeMs ?: current.inferenceTimeMs,
+                fps = visionResult?.fps ?: current.fps,
+                faceFrame = visionResult?.faceFrame ?: current.faceFrame,
+                driveTimeMs = (clock.nowMs() - driveStartTimeMs).coerceAtLeast(0L),
                 alertCount = totalAlerts
             )
         }
@@ -230,7 +224,7 @@ class MonitoringPipeline(
             when (action) {
                 is Action.ShowRedFlash -> {
                     Log.w(tag, "Action.ShowRedFlash triggered")
-                    totalAlerts++
+                    totalAlerts++ // Counted once per L3 episode (AUDIT-001, AUDIT-004)
                     alarmToneGenerator.startAlarm()
                     _uiState.update { it.copy(isRedFlashActive = true, alertCount = totalAlerts) }
                 }
@@ -244,7 +238,7 @@ class MonitoringPipeline(
                 }
                 is Action.PlayFamilyClip -> {
                     Log.d(tag, "Action.PlayFamilyClip triggered: ${action.index}")
-                    totalAlerts++
+                    // PlayFamilyClip must NOT increment totalAlerts (counted once per L3 episode)
                 }
                 is Action.SendSms -> {
                     Log.w(tag, "Action.SendSms triggered: ${action.reason}")

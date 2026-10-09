@@ -310,10 +310,14 @@ class FatigueEngineTest {
         assertEquals(DriverState.FATIGUED, output.state)
 
         // 3. Severe fatigue dropping score below 30 -> Level L3, State CRITICAL
-        for (i in 0 until 40) {
+        // 2.0s closure (< 2.5s override) adds heavy closure penalty + PERCLOS + head droop
+        for (i in 0 until 20) {
             clock.advance(100L)
-            val ear = if (i % 2 == 0) 0.05f else 0.28f
-            output = engine.onFrame(frame(earAvg = ear, pitchDeg = 25f))
+            output = engine.onFrame(frame(earAvg = 0.05f, pitchDeg = 25f))
+        }
+        for (i in 0 until 25) {
+            clock.advance(100L)
+            output = engine.onFrame(frame(earAvg = if (i % 2 == 0) 0.05f else 0.28f, pitchDeg = 25f))
         }
         assertTrue("Score reaches critical band <= 30", output.alertness <= 30)
         assertEquals(Level.L3, output.level)

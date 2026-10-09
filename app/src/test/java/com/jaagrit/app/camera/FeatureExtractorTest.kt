@@ -101,4 +101,41 @@ class FeatureExtractorTest {
         // Positive pitch = head down (nodding forward / droop) per D3 and requirements
         assertTrue("Head nodding down must produce positive pitch (pitchDeg > 0)", pitch > 0f)
     }
+
+    @Test
+    fun verifyMatrixPoseCalculationWithKnownRotation() {
+        // Identity matrix produces 0 pitch, yaw, roll
+        val identity = floatArrayOf(
+            1f, 0f, 0f, 0f,
+            0f, 1f, 0f, 0f,
+            0f, 0f, 1f, 0f,
+            0f, 0f, 0f, 1f
+        )
+        val (pitchZero, yawZero, rollZero) = FeatureExtractor.calculatePoseFromMatrix(identity)
+        assertEquals(0f, pitchZero, 0.001f)
+        assertEquals(0f, yawZero, 0.001f)
+        assertEquals(0f, rollZero, 0.001f)
+
+        // 20 degree rotation around X axis (nodding down in standard column-major)
+        val angleDeg = 20.0
+        val angleRad = Math.toRadians(angleDeg)
+        val c = kotlin.math.cos(angleRad).toFloat()
+        val s = kotlin.math.sin(angleRad).toFloat()
+
+        // Col 0: [1, 0, 0, 0]
+        // Col 1: [0, cos, sin, 0]
+        // Col 2: [0, -sin, cos, 0]
+        // Col 3: [0, 0, 0, 1]
+        val rotX20 = floatArrayOf(
+            1f, 0f, 0f, 0f,
+            0f, c, s, 0f,
+            0f, -s, c, 0f,
+            0f, 0f, 0f, 1f
+        )
+        val (pitch, yaw, roll) = FeatureExtractor.calculatePoseFromMatrix(rotX20)
+        assertEquals(0f, yaw, 0.01f)
+        assertEquals(0f, roll, 0.01f)
+        // Check pitch magnitude matches 20 degrees
+        assertEquals(20f, kotlin.math.abs(pitch), 0.5f)
+    }
 }

@@ -88,7 +88,8 @@ data class EngineOutput(
     val level: Level,
     val alertness: Int,
     val reasons: List<String>,
-    val actions: List<Action>
+    val actions: List<Action>,
+    val isAlertActive: Boolean = false
 ) {
     companion object {
         val INITIAL = EngineOutput(
@@ -96,7 +97,8 @@ data class EngineOutput(
             level = Level.L0,
             alertness = 100,
             reasons = emptyList(),
-            actions = emptyList()
+            actions = emptyList(),
+            isAlertActive = false
         )
     }
 }
