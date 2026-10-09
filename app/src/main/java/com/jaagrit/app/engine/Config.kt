@@ -69,6 +69,8 @@ data class Config(
     // Calibration settings (CAL-1, D4, D9)
     val calibrationOpenMs: Long = if (demoTimers) QUICK_CALIBRATION_OPEN_MS else CALIBRATION_OPEN_MS,
     val calibrationClosedMs: Long = if (demoTimers) QUICK_CALIBRATION_CLOSED_MS else CALIBRATION_CLOSED_MS,
+    val calibrationYawnMs: Long = CALIBRATION_YAWN_MS,
+    val calibrationHeadPoseMs: Long = CALIBRATION_HEAD_POSE_MS,
     // Initial reaction window ignored during each calibration phase
     val calibrationIgnoreInitialMs: Long = CALIBRATION_IGNORE_INITIAL_MS,
     // Threshold factor: closedMedian + factor * (openMedian - closedMedian)
@@ -144,11 +146,14 @@ data class Config(
         // Calibration
         const val CALIBRATION_OPEN_MS = 10000L
         const val CALIBRATION_CLOSED_MS = 3000L
+        const val CALIBRATION_YAWN_MS = 5000L
+        const val CALIBRATION_HEAD_POSE_MS = 5000L
         const val CALIBRATION_IGNORE_INITIAL_MS = 1000L
         const val CALIBRATION_THRESHOLD_FACTOR = 0.5f
         const val CALIBRATION_MIN_GAP = 0.05f
         const val QUICK_CALIBRATION_OPEN_MS = 5000L
         const val QUICK_CALIBRATION_CLOSED_MS = 2000L
+        const val DEFAULT_RESPONSE_LATENCY_MS = 1500L
 
         // False alert limits
         const val FALSE_ALERT_LIMIT_COUNT = 3
