@@ -45,8 +45,11 @@ Quiet: __/5   Noisy: __/5   Latency: ____ ms
 ## iQOO 15 probe (hour 0-2)
 | Check | Result |
 |---|---|
-| FaceLandmarker inference (ms): CPU / GPU / NPU if available | ~15–25 ms (CPU, Snapdragon 8 Elite) |
-| Average FPS during monitoring | ~24–25 FPS |
+| FaceLandmarker inference (ms): CPU / GPU / NPU if available | ~18–30 ms (CPU, Snapdragon 8 Elite) |
+| Average FPS during monitoring | ~24.5 FPS |
+| Open-eye EAR (phone front camera) | ~0.20–0.28 (neutral posture) |
+| Neutral Mouth MAR (closed) | ~0.00–0.02 |
+| Pitch (neutral dashboard angle) | ~7.0°–9.0° (positive = nodding down) |
 | Phone temp at start / after 10 min of monitoring | |
 | Temp after 5 companion/TTS events | |
 | TTS Hindi voice present | |
