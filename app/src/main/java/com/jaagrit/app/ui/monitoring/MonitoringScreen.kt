@@ -9,11 +9,18 @@ import android.view.WindowManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,15 +31,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -45,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -53,8 +65,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.jaagrit.app.camera.CameraController
-import com.jaagrit.app.camera.FaceLandmarkerWrapper
+import com.jaagrit.app.camera.MonitoringPipeline
+import com.jaagrit.app.camera.MonitoringUiState
+import com.jaagrit.app.engine.DriverState
 
 @Composable
 fun MonitoringScreen(
@@ -62,14 +75,23 @@ fun MonitoringScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Keep screen awake while monitoring (REQUIREMENTS UI-4)
+    // Keep screen awake and force max brightness while monitoring (UI-4)
     DisposableEffect(Unit) {
         val activity = context.findActivity()
-        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val window = activity?.window
+        val originalBrightness = window?.attributes?.screenBrightness ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+
+        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val params = window?.attributes
+        params?.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL
+        window?.attributes = params
+
         onDispose {
-            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            val restoreParams = window?.attributes
+            restoreParams?.screenBrightness = originalBrightness
+            window?.attributes = restoreParams
         }
     }
 
@@ -120,34 +142,59 @@ private fun ActiveMonitoringContent(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Pipeline instances decoupled from UI
-    val landmarkerWrapper = remember { FaceLandmarkerWrapper(context) }
-    val cameraController = remember { CameraController(context, landmarkerWrapper) }
-
-    val visionResult by landmarkerWrapper.visionResult.collectAsState()
-    val frame = visionResult.faceFrame
+    // Pipeline decoupled from UI (AGENTS.md Rule 10, D15)
+    val pipeline = remember { MonitoringPipeline(context) }
+    val uiState by pipeline.uiState.collectAsState()
 
     var showDebugPanel by remember { mutableStateOf(false) }
 
-    // Dispose only when leaving the screen or lifecycle is destroyed
     DisposableEffect(lifecycleOwner) {
         onDispose {
-            cameraController.release()
+            pipeline.release()
         }
+    }
+
+    // Full-screen flashing red state overlay for Critical Alert (UI-2, LAD-1)
+    if (uiState.isRedFlashActive) {
+        RedAlertFullScreen(
+            uiState = uiState,
+            onImAwake = { pipeline.onImAwake() },
+            modifier = modifier
+        )
+        return
+    }
+
+    // State-tailored theme colors
+    val themeColor = when (uiState.state) {
+        DriverState.NORMAL -> Color(0xFF2E7D32)     // Rich Green
+        DriverState.CAUTION -> Color(0xFFF57F17)    // Amber
+        DriverState.FATIGUED -> Color(0xFFE65100)   // Orange
+        DriverState.CRITICAL -> Color(0xFFD32F2F)   // Red
+        DriverState.FACE_LOST -> Color(0xFF757575)  // Grey
+        DriverState.CALIBRATING -> Color(0xFF1976D2)// Blue
+    }
+
+    val stateWord = when (uiState.state) {
+        DriverState.NORMAL -> "अलर्ट • Focused"
+        DriverState.CAUTION -> "थकान बढ़ रही है • Caution"
+        DriverState.FATIGUED -> "जवाब दो • Fatigued"
+        DriverState.CRITICAL -> "जागो! • DROWSY"
+        DriverState.FACE_LOST -> "चेहरा नहीं दिख रहा • Face Lost"
+        DriverState.CALIBRATING -> "कैलिब्रेशन • Calibrating"
     }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(20.dp),
+            .padding(horizontal = 20.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.SpaceBetween,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Top Header with Long-Press gesture for Debug Panel (AGENTS.md Rule 7)
+        // 1. Top Header with Privacy Badge and Long-press for Telemetry
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
-                .padding(top = 8.dp)
+                .fillMaxWidth()
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onLongPress = {
@@ -156,33 +203,70 @@ private fun ActiveMonitoringContent(
                     )
                 }
         ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // App Title
+                Text(
+                    text = "JAAGRIT",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 2.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                // Privacy Badge (Rule 5 & PRODUCT.md)
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF1B5E20).copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2E7D32).copy(alpha = 0.4f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "🔒",
+                            fontSize = 12.sp
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "ON-DEVICE • OFFLINE",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF2E7D32)
+                        )
+                    }
+                }
+            }
+
             Text(
-                text = "JAAGRIT MONITORING",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.5.sp,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Text(
-                text = if (showDebugPanel) "Telemetry Panel Active (long-press to close)" else "Live Driver Alertness Stream",
-                fontSize = 13.sp,
-                color = if (showDebugPanel) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline
+                text = if (showDebugPanel) "Telemetry Active (long-press title to close)" else "Driving Alertness Monitor",
+                fontSize = 12.sp,
+                color = if (showDebugPanel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                modifier = Modifier.padding(top = 2.dp)
             )
         }
 
-        // Camera Preview + Status Card / Debug Telemetry
+        // 2. Middle Section: Camera preview + Giant Alertness Number + Metrics
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.Center
         ) {
-            // Small Front-Camera Preview (CAM-1)
+            // Small Camera Preview (CAM-1)
             Box(
                 modifier = Modifier
-                    .size(width = 160.dp, height = 210.dp)
+                    .size(width = 150.dp, height = 190.dp)
                     .clip(RoundedCornerShape(20.dp))
                     .border(
-                        width = 2.dp,
-                        color = if (visionResult.faceFound) Color(0xFF2E7D32) else Color(0xFFD32F2F),
+                        width = 2.5.dp,
+                        color = if (uiState.faceFound) Color(0xFF2E7D32) else Color(0xFF757575),
                         shape = RoundedCornerShape(20.dp)
                     )
                     .background(Color.Black),
@@ -193,7 +277,7 @@ private fun ActiveMonitoringContent(
                         PreviewView(ctx).apply {
                             scaleType = PreviewView.ScaleType.FILL_CENTER
                             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                            cameraController.startCamera(
+                            pipeline.start(
                                 lifecycleOwner = lifecycleOwner,
                                 previewView = this
                             )
@@ -201,195 +285,175 @@ private fun ActiveMonitoringContent(
                     },
                     modifier = Modifier.fillMaxSize()
                 )
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // FACE FOUND / NO FACE status banner
-            val statusColor = if (visionResult.faceFound) Color(0xFF2E7D32) else Color(0xFFC62828)
-            val statusText = if (visionResult.faceFound) "FACE FOUND" else "NO FACE"
-
-            Card(
-                shape = RoundedCornerShape(50),
-                colors = CardDefaults.cardColors(containerColor = statusColor),
-                modifier = Modifier.padding(horizontal = 16.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
+                // Face status pill on preview
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 8.dp)
+                        .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(Color.White)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = statusText,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        letterSpacing = 1.sp
+                        text = if (uiState.faceFound) "FACE VISIBLE" else "NO FACE",
+                        color = if (uiState.faceFound) Color(0xFF81C784) else Color(0xFFE57373),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Giant Alertness Number (UI-1, PRODUCT.md)
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "${uiState.alertness}",
+                    fontSize = 76.sp,
+                    fontWeight = FontWeight.Black,
+                    color = themeColor,
+                    lineHeight = 76.sp
+                )
+                Text(
+                    text = "/100",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.padding(bottom = 12.dp, start = 4.dp)
+                )
+            }
+
+            // State Word Banner
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = themeColor.copy(alpha = 0.14f),
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, themeColor.copy(alpha = 0.6f)),
+                modifier = Modifier.padding(top = 4.dp)
+            ) {
+                Text(
+                    text = stateWord,
+                    color = themeColor,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
+                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp)
+                )
+            }
+
+            // Reasons summary (if degraded)
+            if (uiState.reasons.isNotEmpty() && uiState.state != DriverState.NORMAL) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = uiState.reasons.firstOrNull() ?: "",
+                    fontSize = 13.sp,
+                    color = themeColor,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 20.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Minimal Driver View Stats: Drive Time & Alert Count
+            Card(
+                modifier = Modifier.fillMaxWidth(0.92f),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "Drive Time",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = uiState.driveTimeFormatted,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(30.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant)
+                    )
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "Alerts",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "${uiState.alertCount}",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (uiState.alertCount > 0) Color(0xFFD32F2F) else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
 
             // Debug Telemetry Panel (shown on long-pressing title)
-            if (showDebugPanel) {
+            AnimatedVisibility(visible = showDebugPanel) {
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth(0.95f)
+                        .padding(top = 12.dp),
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f)
                     )
                 ) {
                     Column(
                         modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
                             text = "DEBUG TELEMETRY (LIVE)",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.tertiary
+                            color = MaterialTheme.colorScheme.primary
                         )
-
-                        // EAR metrics
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "EAR L: ${"%.3f".format(frame.earL)} | R: ${"%.3f".format(frame.earR)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "AVG: ${"%.3f".format(frame.earAvg)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                        val frame = uiState.faceFrame
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(text = "EAR L: ${"%.3f".format(frame.earL)} | R: ${"%.3f".format(frame.earR)}", fontSize = 12.sp)
+                            Text(text = "AVG: ${"%.3f".format(frame.earAvg)}", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
-
-                        // MAR metric
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Mouth (MAR): ${"%.3f".format(frame.mar)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = if (frame.mar > 0.45f) "YAWN" else "NORMAL",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold,
-                                color = if (frame.mar > 0.45f) Color(0xFFE65100) else Color(0xFF2E7D32)
-                            )
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(text = "Mouth (MAR): ${"%.3f".format(frame.mar)}", fontSize = 12.sp)
+                            Text(text = "Pitch: ${"%+.1f°".format(frame.pitchDeg)} (down+)", fontSize = 12.sp)
                         }
-
-                        // Head pose (positive pitch = head down)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Pitch: ${"%+.1f°".format(frame.pitchDeg)} (down+)",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Yaw: ${"%+.1f°".format(frame.yawDeg)} | Roll: ${"%+.1f°".format(frame.rollDeg)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        // Inference latency and FPS
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Inference: ${visionResult.inferenceTimeMs} ms",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                            Text(
-                                text = "FPS: ${"%.1f".format(visionResult.fps)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        }
-                    }
-                }
-            } else {
-                // Minimal Driver View: Inference ms and FPS
-                Card(
-                    modifier = Modifier.fillMaxWidth(0.85f),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceAround,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "Inference",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                            Text(
-                                text = "${visionResult.inferenceTimeMs} ms",
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .width(1.dp)
-                                .height(28.dp)
-                                .background(MaterialTheme.colorScheme.outlineVariant)
-                        )
-
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "Frame Rate",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                            Text(
-                                text = "%.1f FPS".format(visionResult.fps),
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(text = "Inference: ${uiState.inferenceTimeMs} ms", fontSize = 12.sp, color = MaterialTheme.colorScheme.outline)
+                            Text(text = "FPS: ${"%.1f".format(uiState.fps)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.outline)
                         }
                     }
                 }
             }
         }
 
-        // End Drive Action Button
+        // 3. End Drive Button
         Button(
             onClick = onEndDrive,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(54.dp),
+                .height(52.dp),
             shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.error
@@ -401,6 +465,108 @@ private fun ActiveMonitoringContent(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onError
             )
+        }
+    }
+}
+
+/**
+ * Full-screen flashing red state for Level 3 Critical Alert (UI-2, LAD-1).
+ * Features high-urgency flashing red background, clear Devanagari/English warnings,
+ * and a giant prominent "I'M AWAKE" button that resets the alert.
+ */
+@Composable
+private fun RedAlertFullScreen(
+    uiState: MonitoringUiState,
+    onImAwake: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    // Flashing red animation
+    val infiniteTransition = rememberInfiniteTransition(label = "RedAlertFlash")
+    val flashAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.65f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 350, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "FlashAlpha"
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFFD32F2F).copy(alpha = flashAlpha))
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Warning Icon and Header
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(top = 40.dp)
+            ) {
+                Text(
+                    text = "⚠️",
+                    fontSize = 64.sp
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "जागो! WAKE UP!",
+                    color = Color.White,
+                    fontSize = 36.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 2.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "गाड़ी धीरे करो और आँखें खोलो!",
+                    color = Color.White.copy(alpha = 0.95f),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            // Primary Emergency Action: Giant "I'M AWAKE" Button (UI-2)
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 30.dp)
+            ) {
+                Button(
+                    onClick = onImAwake,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(88.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = Color(0xFFB71C1C)
+                    ),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 12.dp)
+                ) {
+                    Text(
+                        text = "I'M AWAKE",
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 2.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    text = "Tap button to stop alarm",
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         }
     }
 }
