@@ -168,7 +168,14 @@ data class Config(
         const val DRIVE_TIME_RAMP_END_HOURS = 6.0
         const val DRIVE_TIME_MAX_PENALTY = 15.0
 
-        // Alertness score weights & EMA
+        // Alertness score weights & EMA (ENG-2, DECISIONS D1)
+        // Weight rationale:
+        // - PERCLOS (30.0): Gold-standard physiological fatigue metric; percentage of eye closure over 60s window.
+        // - Longest Closure (35.0): Near-microsleep approaching 2.5s is an acute hazard warranting heavy penalty.
+        // - Blink Rate (20.0): Elevated blink frequency (+20%..+50%) reflects compensatory effort against drowsiness.
+        // - Head Droop (15.0): Forward neck pitch nodding confirms muscular fatigue.
+        // - Drive Time (15.0 max): Accumulating endurance fatigue ramp starting after 2h, capping at 6h.
+        // - EMA Alpha (0.15): Filters out transient noise while tracking score trends with ~1s latency.
         const val ALERTNESS_WEIGHT_PERCLOS = 30.0
         const val ALERTNESS_WEIGHT_CLOSURE = 35.0
         const val ALERTNESS_WEIGHT_BLINK_RATE = 20.0
