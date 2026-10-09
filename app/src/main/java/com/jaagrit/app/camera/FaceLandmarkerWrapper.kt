@@ -101,7 +101,7 @@ class FaceLandmarkerWrapper(
 
             val mpImage = BitmapImageBuilder(rotatedBitmap).build()
             val timestampMs = getNextMonotonicTimestamp()
-            frameStartTimes[timestampMs] = SystemClock.uptimeMillis()
+            frameStartTimes[timestampMs] = SystemClock.elapsedRealtime()
 
             faceLandmarker?.detectAsync(mpImage, timestampMs)
         } catch (e: Exception) {
@@ -114,7 +114,7 @@ class FaceLandmarkerWrapper(
     private var lastLoggedMs: Long = 0L
 
     private fun processDetectionResult(result: FaceLandmarkerResult, timestampMs: Long) {
-        val now = SystemClock.uptimeMillis()
+        val now = SystemClock.elapsedRealtime()
         val startTime = frameStartTimes.remove(timestampMs) ?: now
         val inferenceTimeMs = (now - startTime).coerceAtLeast(0L)
 
@@ -158,7 +158,7 @@ class FaceLandmarkerWrapper(
 
     @Synchronized
     private fun getNextMonotonicTimestamp(): Long {
-        var now = SystemClock.uptimeMillis()
+        var now = SystemClock.elapsedRealtime()
         if (now <= lastFrameTimestampMs) {
             now = lastFrameTimestampMs + 1
         }

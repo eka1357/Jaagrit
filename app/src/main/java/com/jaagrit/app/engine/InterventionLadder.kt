@@ -68,6 +68,12 @@ class InterventionLadder(
     // Continuous Open Eyes tracking (LAD-5)
     private var eyesOpenContinuousStartTimeMs: Long? = null
 
+    // Face lost state (AUDIT-011)
+    private var isFaceLost: Boolean = false
+
+    val isAlertActive: Boolean
+        get() = isL3Active || isL4Active || isL5Active
+
     /**
      * Process a frame and return any newly triggered ladder actions.
      */
@@ -83,6 +89,16 @@ class InterventionLadder(
         if (!faceFound) {
             onFaceLost(now)
             return emptyList()
+        }
+
+        // Face returned after loss: restart L4/L5 countdown from that moment (AUDIT-011)
+        if (isFaceLost) {
+            isFaceLost = false
+            if (isL3Active && !isL4Active && !isL5Active) {
+                l4EscalateAtMs = now + config.l4AfterL3Ms
+            } else if (isL4Active && !isL5Active) {
+                l5EscalateAtMs = now + config.l5AfterL4Ms
+            }
         }
 
         // 1. Continuous Open Eyes for Awake Response (LAD-5)
@@ -127,6 +143,16 @@ class InterventionLadder(
     fun onTick(now: Long = clock.nowMs(), faceFound: Boolean = true): List<Action> {
         val actions = mutableListOf<Action>()
         if (faceFound) {
+            // Face returned after loss: restart L4/L5 countdown from that moment (AUDIT-011)
+            if (isFaceLost) {
+                isFaceLost = false
+                if (isL3Active && !isL4Active && !isL5Active) {
+                    l4EscalateAtMs = now + config.l4AfterL3Ms
+                } else if (isL4Active && !isL5Active) {
+                    l5EscalateAtMs = now + config.l5AfterL4Ms
+                }
+            }
+
             // Check head droop escalation timeout if pending
             if (pendingHeadEscalateAtMs != null && now >= pendingHeadEscalateAtMs!!) {
                 pendingHeadEscalateAtMs = null
@@ -134,6 +160,8 @@ class InterventionLadder(
                 actions.addAll(fireL3(now, "Head droop no response in 5s"))
             }
             actions.addAll(checkEscalationTimers(now, faceFound = true))
+        } else {
+            onFaceLost(now)
         }
         return actions
     }
@@ -143,6 +171,7 @@ class InterventionLadder(
      * Cancels head droop continuous tracking; timers for L4/L5 never fire while face is lost.
      */
     fun onFaceLost(now: Long = clock.nowMs()) {
+        isFaceLost = true
         eyesOpenContinuousStartTimeMs = null
         droopSustainedStartTimeMs = null
         headRestoreStartTimeMs = null
@@ -169,6 +198,8 @@ class InterventionLadder(
         isL4Active = false
         isL5Active = false
         pendingHeadEscalateAtMs = null
+        // Reset eyes-open response timer so awake response requires >= 3s AFTER L3 fired (AUDIT-009)
+        eyesOpenContinuousStartTimeMs = null
 
         lastL3PhraseIndex = randomPhrasePicker(Phrases.L3_ALERTS, lastL3PhraseIndex)
         val phrase = Phrases.L3_ALERTS[lastL3PhraseIndex]
@@ -194,6 +225,8 @@ class InterventionLadder(
         l5EscalateAtMs = null
         pendingHeadEscalateAtMs = null
         headRestoreStartTimeMs = null
+        eyesOpenContinuousStartTimeMs = null
+        isFaceLost = false
         currentLadderLevel = Level.L0
         hasRespondedSinceL3 = true
 
@@ -220,6 +253,7 @@ class InterventionLadder(
         pendingHeadEscalateAtMs = null
         headRestoreStartTimeMs = null
         eyesOpenContinuousStartTimeMs = null
+        isFaceLost = false
     }
 
     // --- Private Helpers ---

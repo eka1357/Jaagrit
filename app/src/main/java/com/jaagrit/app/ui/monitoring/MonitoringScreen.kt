@@ -154,16 +154,6 @@ private fun ActiveMonitoringContent(
         }
     }
 
-    // Full-screen flashing red state overlay for Critical Alert (UI-2, LAD-1)
-    if (uiState.isRedFlashActive) {
-        RedAlertFullScreen(
-            uiState = uiState,
-            onImAwake = { pipeline.onImAwake() },
-            modifier = modifier
-        )
-        return
-    }
-
     // State-tailored theme colors
     val themeColor = when (uiState.state) {
         DriverState.NORMAL -> Color(0xFF2E7D32)     // Rich Green
@@ -183,13 +173,14 @@ private fun ActiveMonitoringContent(
         DriverState.CALIBRATING -> "कैलिब्रेशन • Calibrating"
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
         // 1. Top Header with Privacy Badge and Long-press for Telemetry
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -464,6 +455,16 @@ private fun ActiveMonitoringContent(
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onError
+            )
+        }
+    }
+
+        // Full-screen flashing red state overlay for Critical Alert (UI-2, LAD-1, AUDIT-006)
+        if (uiState.isRedFlashActive) {
+            RedAlertFullScreen(
+                uiState = uiState,
+                onImAwake = { pipeline.onImAwake() },
+                modifier = Modifier.fillMaxSize()
             )
         }
     }

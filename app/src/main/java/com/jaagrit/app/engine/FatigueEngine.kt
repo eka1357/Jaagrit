@@ -47,6 +47,9 @@ class FatigueEngine(
     // Head droop tracking
     private var headDroopStartTimeMs: Long? = null
 
+    val isAlertActive: Boolean
+        get() = ladder.isAlertActive
+
     /**
      * Ingest a new face frame and return updated driver state, alertness, and actions.
      */
@@ -91,10 +94,10 @@ class FatigueEngine(
             reasons.add("Long eye closure (${"%.1f".format(longestRecentClosureMs / 1000.0)}s)")
         }
 
-        // 6c. Blink rate increase penalty (0 to 25 points)
-        val blinkRatio = computeBlinkRateRatio(now)
-        val blinkPenalty = computeBlinkRatePenalty(blinkRatio)
-        if (blinkPenalty > 5.0) {
+        // 6c. Blink rate increase penalty (0 to 25 points, gated until M9a per AUDIT-012)
+        val blinkRatio = if (config.blinkSignalEnabled) computeBlinkRateRatio(now) else 0.0
+        val blinkPenalty = if (config.blinkSignalEnabled) computeBlinkRatePenalty(blinkRatio) else 0.0
+        if (config.blinkSignalEnabled && blinkPenalty > 5.0) {
             reasons.add("Blink rate elevated (+${(blinkRatio * 100).toInt()}% vs baseline)")
         }
 
@@ -135,7 +138,7 @@ class FatigueEngine(
         val rawTriggerLevel = when {
             currentClosureDuration >= config.closureConfirmMs -> Level.L3
             perclos >= config.perclosL2 -> Level.L2
-            blinkRatio >= config.blinkRateL1Increase && (now - driveStartTimeMs >= config.blinkRateL1SustainMs) -> Level.L1
+            config.blinkSignalEnabled && blinkRatio >= config.blinkRateL1Increase && (now - driveStartTimeMs >= config.blinkRateL1SustainMs) -> Level.L1
             else -> Level.L0
         }
 
@@ -182,7 +185,8 @@ class FatigueEngine(
             level = activeLevel,
             alertness = alertnessScore,
             reasons = reasons,
-            actions = ladderActions
+            actions = ladderActions,
+            isAlertActive = ladder.isAlertActive
         )
     }
 
@@ -205,7 +209,8 @@ class FatigueEngine(
                 level = Level.L0,
                 alertness = smoothedAlertness.roundToInt().coerceIn(0, 100),
                 reasons = listOf("Face not visible in camera"),
-                actions = actions
+                actions = actions,
+                isAlertActive = ladder.isAlertActive
             )
         }
 
@@ -234,7 +239,8 @@ class FatigueEngine(
             level = activeLevel,
             alertness = smoothedAlertness.roundToInt().coerceIn(0, 100),
             reasons = reasons,
-            actions = actions
+            actions = actions,
+            isAlertActive = ladder.isAlertActive
         )
     }
 
@@ -277,7 +283,8 @@ class FatigueEngine(
             level = activeLevel,
             alertness = smoothedAlertness.roundToInt().coerceIn(0, 100),
             reasons = reasons,
-            actions = actions
+            actions = actions,
+            isAlertActive = ladder.isAlertActive
         )
     }
 
@@ -338,7 +345,8 @@ class FatigueEngine(
             level = Level.L0, // Never escalates while face is lost (ENG-4)
             alertness = smoothedAlertness.roundToInt(),
             reasons = listOf("Face not visible in camera"),
-            actions = actions
+            actions = actions,
+            isAlertActive = ladder.isAlertActive
         )
     }
 
