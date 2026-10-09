@@ -33,6 +33,14 @@ object Phrases {
         "अलर्ट है ना? एक बार बोल दे।"
     )
 
+    // 2. Level 4 — Family voice fallback (D8)
+    // "Papa, jaldi ghar aao. Hum intezaar kar rahe hain."
+    const val L4_FALLBACK = "पापा, जल्दी घर आओ। हम इंतज़ार कर रहे हैं।"
+
+    // 3. Level 5 — Emergency SMS templates (PHRASES.md Section 3)
+    const val L5_SMS_TEMPLATE_EN = "ALERT: %s may be unresponsive while driving.\nLast alert: %s\nAlerts in this trip: %d\nLocation: %s\n— Sent by Jaagrit (automated safety alert)"
+    const val L5_SMS_TEMPLATE_HI = "अलर्ट: %s गाड़ी चलाते समय जवाब नहीं दे रहे हैं।\nआख़िरी अलर्ट: %s\nइस ट्रिप में अलर्ट: %d\nलोकेशन: %s\n— जागृत (ऑटोमैटिक सेफ्टी अलर्ट)"
+
     // 10. System messages
     // "Camere se chehra dikhayi nahi de raha. Phone adjust karo." (ENG-4, face lost 30 s)
     const val FACE_LOST_30S = "कैमरे से चेहरा दिखाई नहीं दे रहा। फोन एडजस्ट करो।"

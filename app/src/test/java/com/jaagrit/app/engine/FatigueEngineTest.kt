@@ -2,6 +2,7 @@ package com.jaagrit.app.engine
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -318,4 +319,58 @@ class FatigueEngineTest {
         assertEquals(Level.L3, output.level)
         assertEquals(DriverState.CRITICAL, output.state)
     }
+
+    @Test
+    fun testFatigueEngine_endToEndLadderEscalationAndResponse() {
+        // 1. Initial normal drive
+        engine.resetDrive()
+        var output = engine.onFrame(frame(earAvg = 0.28f))
+        assertEquals(Level.L0, output.level)
+        assertEquals(DriverState.NORMAL, output.state)
+
+        // 2. Continuous closure for 2.5s triggers L3 actions
+        var l3TriggerOutput: EngineOutput? = null
+        for (i in 0 until 30) {
+            clock.advance(100L)
+            output = engine.onFrame(frame(earAvg = 0.04f))
+            if (output.actions.isNotEmpty()) {
+                l3TriggerOutput = output
+            }
+        }
+        assertNotNull("Must emit actions on confirming 2.5s closure", l3TriggerOutput)
+        assertTrue(l3TriggerOutput!!.actions.contains(Action.ShowRedFlash))
+        assertTrue(l3TriggerOutput.actions.contains(Action.Vibrate(VibePattern.URGENT)))
+        assertTrue(l3TriggerOutput.actions.any { it is Action.Speak && it.urgent })
+        assertEquals(Level.L3, output.level)
+        assertEquals(DriverState.CRITICAL, output.state)
+
+        // 3. Driver unresponsive for 10s -> escalates to L4 (Family Clip)
+        var l4TriggerOutput: EngineOutput? = null
+        for (i in 0 until 100) {
+            clock.advance(100L)
+            output = engine.onFrame(frame(earAvg = 0.04f))
+            if (output.actions.any { it is Action.PlayFamilyClip }) {
+                l4TriggerOutput = output
+            }
+        }
+        assertNotNull("Must escalate to L4 family clip after 10s", l4TriggerOutput)
+        assertEquals(Level.L4, output.level)
+        assertEquals(DriverState.CRITICAL, output.state)
+        assertTrue(output.reasons.any { it.contains("L4", ignoreCase = true) })
+
+        // 4. Driver responds via UI button (VoiceEvent.ImAwake)
+        clock.advance(500L)
+        val awakeOutput = engine.onVoice(VoiceEvent.ImAwake)
+        assertEquals(Level.L0, awakeOutput.level)
+        assertEquals(DriverState.NORMAL, awakeOutput.state)
+
+        // 5. Normal driving resumes
+        clock.advance(5000L)
+        output = engine.onFrame(frame(earAvg = 0.28f))
+        assertEquals(Level.L0, output.level)
+        assertEquals(DriverState.NORMAL, output.state)
+        assertTrue(output.actions.none { it is Action.PlayFamilyClip })
+        assertTrue(output.actions.none { it is Action.SendSms })
+    }
 }
+
