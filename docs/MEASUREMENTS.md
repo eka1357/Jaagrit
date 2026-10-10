@@ -47,7 +47,9 @@ Quiet: __/5   Noisy: __/5   Latency: ____ ms
 |---|---|
 | FaceLandmarker inference (ms): CPU / GPU / NPU if available | ~18–30 ms (CPU, Snapdragon 8 Elite) |
 | Average FPS during monitoring | ~24.5 FPS |
-| Open-eye EAR (phone front camera) | ~0.20–0.28 (neutral posture) |
+| Open-eye EAR (phone front camera) | ~0.28–0.36 (isotropic pixel space; ~0.20–0.28 legacy normalized) |
+| Closed-eye EAR (phone front camera) | ~0.05–0.08 (isotropic pixel space) |
+| Default uncalibrated threshold | 0.200 (isotropic pixel space; 0.165 legacy normalized) |
 | Neutral Mouth MAR (closed) | ~0.00–0.02 |
 | Pitch (neutral dashboard angle) | ~7.0°–9.0° (positive = nodding down) |
 | Phone temp at start / after 10 min of monitoring | |
@@ -82,7 +84,9 @@ Quiet: __/5   Noisy: __/5   Latency: ____ ms
 ## Threshold changes log
 | Date | Constant (Config.kt) | Old | New | Why (evidence) |
 |---|---|---|---|---|
-| | | | | |
+| 2026-10-10 | DEFAULT_BASELINE_OPEN_EAR | 0.28 | 0.32 | AUDIT-018: Isotropic pixel-space EAR calculation (aspect-ratio independent) |
+| 2026-10-10 | DEFAULT_BASELINE_CLOSED_EAR | 0.05 | 0.08 | AUDIT-018: Isotropic pixel-space EAR calculation |
+| 2026-10-10 | DEFAULT_BASELINE_THRESHOLD | 0.165 | 0.200 | AUDIT-018: Midpoint in isotropic pixel space |
 
 ## Numbers approved for slides
 (copy only measured values here)

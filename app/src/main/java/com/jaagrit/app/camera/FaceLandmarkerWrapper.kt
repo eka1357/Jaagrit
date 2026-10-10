@@ -99,6 +99,9 @@ class FaceLandmarkerWrapper(
                 bitmap
             }
 
+            lastImageWidth = rotatedBitmap.width
+            lastImageHeight = rotatedBitmap.height
+
             val mpImage = BitmapImageBuilder(rotatedBitmap).build()
             val timestampMs = getNextMonotonicTimestamp()
             frameStartTimes[timestampMs] = SystemClock.elapsedRealtime()
@@ -112,6 +115,8 @@ class FaceLandmarkerWrapper(
     }
 
     private var lastLoggedMs: Long = 0L
+    @Volatile private var lastImageWidth: Int = 480
+    @Volatile private var lastImageHeight: Int = 640
 
     private fun processDetectionResult(result: FaceLandmarkerResult, timestampMs: Long) {
         val now = SystemClock.elapsedRealtime()
@@ -134,7 +139,7 @@ class FaceLandmarkerWrapper(
         }
 
         val hasFace = result.faceLandmarks().isNotEmpty()
-        val faceFrame = FeatureExtractor.extract(result, now)
+        val faceFrame = FeatureExtractor.extract(result, now, lastImageWidth, lastImageHeight)
 
         val visionOutput = VisionResult(
             faceFound = hasFace,

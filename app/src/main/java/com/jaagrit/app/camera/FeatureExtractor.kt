@@ -39,7 +39,12 @@ object FeatureExtractor {
     /**
      * Extracts a FaceFrame from FaceLandmarkerResult.
      */
-    fun extract(result: FaceLandmarkerResult?, timestampMs: Long): FaceFrame {
+    fun extract(
+        result: FaceLandmarkerResult?,
+        timestampMs: Long,
+        imageWidth: Int = 1,
+        imageHeight: Int = 1
+    ): FaceFrame {
         if (result == null || result.faceLandmarks().isEmpty()) {
             return FaceFrame(
                 tsMs = timestampMs,
@@ -56,12 +61,15 @@ object FeatureExtractor {
         val landmarksList: List<NormalizedLandmark> = result.faceLandmarks()[0]
         val points = landmarksList.map { Point3D(it.x(), it.y(), it.z()) }
 
-        // 1. Calculate Eye Aspect Ratio (EAR)
-        val earR = calculateEar(points, Config.LANDMARKS_EYE_RIGHT)
-        val earL = calculateEar(points, Config.LANDMARKS_EYE_LEFT)
+        val w = if (imageWidth > 0) imageWidth.toFloat() else 1f
+        val h = if (imageHeight > 0) imageHeight.toFloat() else 1f
 
-        // 2. Calculate Mouth Aspect Ratio (MAR)
-        val mar = calculateMar(points)
+        // 1. Calculate Eye Aspect Ratio (EAR) in isotropic pixel space (AUDIT-018)
+        val earR = calculateEar(points, Config.LANDMARKS_EYE_RIGHT, w, h)
+        val earL = calculateEar(points, Config.LANDMARKS_EYE_LEFT, w, h)
+
+        // 2. Calculate Mouth Aspect Ratio (MAR) in isotropic pixel space (AUDIT-018)
+        val mar = calculateMar(points, w, h)
 
         // 3. Calculate Head Pose (pitch, yaw, roll)
         // Prefer facial transformation matrix if available, fallback to geometric estimate
@@ -88,7 +96,12 @@ object FeatureExtractor {
      * Calculates EAR for a single eye given 6 landmark points.
      * Formula: (dist(p2, p6) + dist(p3, p5)) / (2.0 * dist(p1, p4))
      */
-    fun calculateEar(points: List<Point3D>, indices: IntArray): Float {
+    fun calculateEar(
+        points: List<Point3D>,
+        indices: IntArray,
+        imageWidth: Float = 1f,
+        imageHeight: Float = 1f
+    ): Float {
         if (indices.size < 6) return 0f
         for (idx in indices) {
             if (idx < 0 || idx >= points.size) return 0f
@@ -100,9 +113,9 @@ object FeatureExtractor {
         val p5 = points[indices[4]] // bottom 2
         val p6 = points[indices[5]] // bottom 1
 
-        val v1 = dist2D(p2, p6)
-        val v2 = dist2D(p3, p5)
-        val h = dist2D(p1, p4)
+        val v1 = dist2D(p2, p6, imageWidth, imageHeight)
+        val v2 = dist2D(p3, p5, imageWidth, imageHeight)
+        val h = dist2D(p1, p4, imageWidth, imageHeight)
 
         return if (h > 1e-6f) (v1 + v2) / (2.0f * h) else 0f
     }
@@ -111,14 +124,18 @@ object FeatureExtractor {
      * Calculates MAR from lip landmarks.
      * Formula: sum(vertical_distances) / (3.0 * horizontal_distance)
      */
-    fun calculateMar(points: List<Point3D>): Float {
+    fun calculateMar(
+        points: List<Point3D>,
+        imageWidth: Float = 1f,
+        imageHeight: Float = 1f
+    ): Float {
         if (points.size <= 402) return 0f
-        val h = dist2D(points[MAR_CORNERS.first], points[MAR_CORNERS.second])
+        val h = dist2D(points[MAR_CORNERS.first], points[MAR_CORNERS.second], imageWidth, imageHeight)
         if (h < 1e-6f) return 0f
 
         var vSum = 0f
         for ((upper, lower) in MAR_VERTICAL_PAIRS) {
-            vSum += dist2D(points[upper], points[lower])
+            vSum += dist2D(points[upper], points[lower], imageWidth, imageHeight)
         }
 
         return vSum / (MAR_VERTICAL_PAIRS.size * h)
@@ -173,7 +190,7 @@ object FeatureExtractor {
         val dy = chin.y - forehead.y
         val dz = chin.z - forehead.z
         val pitchRad = atan2(dz, if (dy > 1e-4f) dy else 1e-4f)
-        val pitchDeg = (pitchRad * 180.0 / Math.PI).toFloat() * 1.5f // Scaled to degree space
+        val pitchDeg = (pitchRad * 180.0 / Math.PI).toFloat() * Config.HEAD_PITCH_GEOMETRIC_SCALE // Scaled to degree space
 
         // Yaw: Left vs Right tragus depth difference.
         val dxTragus = rightTragus.x - leftTragus.x
@@ -190,9 +207,14 @@ object FeatureExtractor {
         return Triple(pitchDeg, yawDeg, rollDeg)
     }
 
-    fun dist2D(p1: Point3D, p2: Point3D): Float {
-        val dx = p1.x - p2.x
-        val dy = p1.y - p2.y
+    fun dist2D(
+        p1: Point3D,
+        p2: Point3D,
+        imageWidth: Float = 1f,
+        imageHeight: Float = 1f
+    ): Float {
+        val dx = (p1.x - p2.x) * imageWidth
+        val dy = (p1.y - p2.y) * imageHeight
         return sqrt(dx * dx + dy * dy)
     }
 }

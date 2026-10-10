@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.camera.view.PreviewView
 import androidx.lifecycle.LifecycleOwner
 import com.jaagrit.app.audio.FamilyClipPlayer
+import com.jaagrit.app.audio.PlanBAudioPlayer
 import com.jaagrit.app.data.BaselineStore
 import com.jaagrit.app.data.JaagritDatabase
 import com.jaagrit.app.data.SettingsStore
@@ -36,6 +37,7 @@ import androidx.core.content.ContextCompat
 import com.jaagrit.app.R
 import com.jaagrit.app.speech.DriverIntent
 import com.jaagrit.app.speech.IntentParser
+import com.jaagrit.app.speech.Phrases
 import com.jaagrit.app.speech.SpeechInput
 import com.jaagrit.app.speech.TtsSpeaker
 import kotlinx.coroutines.CoroutineScope
@@ -108,13 +110,14 @@ class MonitoringPipeline(
     val landmarkerWrapper: FaceLandmarkerWrapper = FaceLandmarkerWrapper(context),
     val cameraController: CameraController = CameraController(context, landmarkerWrapper),
     private val speaker: TtsSpeaker = TtsSpeaker(context),
-    private val alarmToneGenerator: AlarmToneGenerator = AlarmToneGenerator(),
+    private val alarmToneGenerator: AlarmToneGenerator = AlarmToneGenerator(context),
     private val vibeManager: VibeManager = VibeManager(context),
     private val baselineStore: BaselineStore = BaselineStore(context),
     private val settingsStore: SettingsStore = SettingsStore(context),
     private val familyClipPlayer: FamilyClipPlayer = FamilyClipPlayer(context) { phrase ->
         speaker.speak(phrase, Lang.HI, urgent = true)
     },
+    val planBAudioPlayer: PlanBAudioPlayer = PlanBAudioPlayer(context),
     private val smsNotifier: SmsNotifier = SmsNotifier(context, settingsStore),
     initialConfig: Config = Config.DEFAULT,
     val clock: Clock = Clock { SystemClock.elapsedRealtime() },
@@ -161,13 +164,48 @@ class MonitoringPipeline(
     val uiState: StateFlow<MonitoringUiState> = _uiState.asStateFlow()
 
     private var isStarted = false
+    private var lastFrameRealtimeMs: Long = 0L
+    private var isBackgrounded: Boolean = false
+    private var boundLifecycleOwner: LifecycleOwner? = null
+    private var boundPreviewView: PreviewView? = null
+
+    /**
+     * Stop camera, alarm, and TTS cleanly when app is backgrounded (AUDIT-015).
+     */
+    fun onAppBackgrounded() {
+        Log.i(tag, "MonitoringPipeline: App backgrounded, stopping camera, alarm, TTS cleanly (AUDIT-015)")
+        isBackgrounded = true
+        cameraController.stopCamera()
+        alarmToneGenerator.stopAlarm()
+        familyClipPlayer.stop()
+        planBAudioPlayer.stop()
+        vibeManager.cancel()
+        speaker.stop()
+    }
+
+    /**
+     * Resume camera when app returns to foreground (AUDIT-015).
+     */
+    fun onAppForegrounded() {
+        Log.i(tag, "MonitoringPipeline: App foregrounded, resuming camera (AUDIT-015)")
+        isBackgrounded = false
+        lastFrameRealtimeMs = clock.nowMs()
+        val owner = boundLifecycleOwner
+        val pv = boundPreviewView
+        if (owner != null && pv != null && isStarted) {
+            cameraController.startCamera(owner, pv)
+        }
+    }
 
     /**
      * Start the camera preview and processing pipeline.
      */
     fun start(lifecycleOwner: LifecycleOwner, previewView: PreviewView) {
+        boundLifecycleOwner = lifecycleOwner
+        boundPreviewView = previewView
         if (isStarted) return
         isStarted = true
+        lastFrameRealtimeMs = clock.nowMs()
         Log.i(tag, "Starting MonitoringPipeline session")
 
         // 1. Create Room Trip off main thread
@@ -254,6 +292,7 @@ class MonitoringPipeline(
         // Immediate physical silencing for instant tactile/auditory feedback
         alarmToneGenerator.stopAlarm()
         familyClipPlayer.stop()
+        planBAudioPlayer.stop()
         vibeManager.cancel()
         speaker.stop()
 
@@ -312,26 +351,56 @@ class MonitoringPipeline(
         }
 
         isStarted = false
-        scope.cancel()
         eventChannel.close()
+        scope.cancel()
+        try {
+            runBlocking {
+                scope.coroutineContext[Job]?.join()
+            }
+        } catch (e: Exception) {
+            Log.w(tag, "Exception joining pipeline scope: ${e.message}")
+        }
         alarmToneGenerator.release()
         familyClipPlayer.release()
+        planBAudioPlayer.release()
         vibeManager.cancel()
         answerDismissJob?.cancel()
         speaker.shutdown()
         cameraController.release()
+        boundLifecycleOwner = null
+        boundPreviewView = null
     }
 
     // --- Private Processing Logic (Sequential on engineDispatcher) ---
 
     private fun processVisionResult(result: VisionResult) {
+        lastFrameRealtimeMs = clock.nowMs()
         val output = engine.onFrame(result.faceFrame)
         handleEngineOutput(output, faceFound = result.faceFound, visionResult = result)
     }
 
     private fun processTick() {
-        val output = engine.onTick()
-        handleEngineOutput(output, faceFound = _uiState.value.faceFound, visionResult = null)
+        if (isBackgrounded) return
+
+        val now = clock.nowMs()
+        // Stale-frame detection (AUDIT-015): no frame for more than 1s treated as FACE_LOST and never escalates
+        val isStale = lastFrameRealtimeMs > 0L && (now - lastFrameRealtimeMs > 1000L)
+        val output = if (isStale) {
+            val staleFrame = FaceFrame(
+                tsMs = now,
+                faceFound = false,
+                earL = 0f,
+                earR = 0f,
+                mar = 0f,
+                pitchDeg = 0f,
+                yawDeg = 0f,
+                rollDeg = 0f
+            )
+            engine.onFrame(staleFrame)
+        } else {
+            engine.onTick()
+        }
+        handleEngineOutput(output, faceFound = if (isStale) false else _uiState.value.faceFound, visionResult = null)
     }
 
     private fun processImAwake() {
@@ -357,6 +426,7 @@ class MonitoringPipeline(
         if (!isAlertActive && _uiState.value.isRedFlashActive) {
             alarmToneGenerator.stopAlarm()
             familyClipPlayer.stop()
+            planBAudioPlayer.stop()
             vibeManager.cancel()
             l5NotSentLoggedForEpisode = false
             // If alert resolved without explicit awake/eyesOpen/voice, mark as dismissed
@@ -453,7 +523,15 @@ class MonitoringPipeline(
                 }
                 is Action.Speak -> {
                     Log.d(tag, "Action.Speak triggered (urgent=${action.urgent}): ${action.text}")
-                    speaker.speak(action.text, action.lang, action.urgent)
+                    if (action.urgent) {
+                        val phraseIndex = Phrases.L3_ALERTS.indexOf(action.text).let { if (it >= 0) it + 1 else 1 }
+                        val played = planBAudioPlayer.play(phraseIndex)
+                        if (!played) {
+                            speaker.speak(action.text, action.lang, action.urgent)
+                        }
+                    } else {
+                        speaker.speak(action.text, action.lang, action.urgent)
+                    }
                 }
                 is Action.PlayFamilyClip -> {
                     Log.i(tag, "Action.PlayFamilyClip triggered: ${action.index}")

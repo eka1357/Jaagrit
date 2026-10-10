@@ -43,11 +43,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.jaagrit.app.speech.VoiceReadinessChecker
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -125,6 +127,12 @@ fun HomeScreen(
 
     val smsAvailability = remember(resumeTick, emergencyContact) {
         smsNotifier.checkAvailability()
+    }
+    var isOfflineHindiVoiceAvailable by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(resumeTick) {
+        VoiceReadinessChecker.checkOfflineHindiAvailability(context) { available ->
+            isOfflineHindiVoiceAvailable = available
+        }
     }
 
     // Detect offline Hindi voice presence via TextToSpeech
@@ -395,12 +403,20 @@ fun HomeScreen(
                             thickness = 1.dp
                         )
 
-                        // Row 4: Hindi voice
+                        // Row 4: Hindi voice (AUDIT-020)
+                        val voiceReady = isOfflineHindiVoiceAvailable == true || isHindiVoiceReady
+                        val voiceStatusText = when {
+                            isOfflineHindiVoiceAvailable == true -> stringResource(R.string.status_ready)
+                            isOfflineHindiVoiceAvailable == false -> stringResource(R.string.status_voice_missing)
+                            isHindiVoiceReady -> stringResource(R.string.status_ready)
+                            else -> stringResource(R.string.status_checking)
+                        }
+
                         ReadinessRow(
                             iconRes = R.drawable.ic_volume_up,
                             label = stringResource(R.string.readiness_hindi_voice),
-                            statusText = stringResource(if (isHindiVoiceReady) R.string.status_ready else R.string.status_install_needed),
-                            isReady = isHindiVoiceReady,
+                            statusText = voiceStatusText,
+                            isReady = voiceReady,
                             onClick = {
                                 try {
                                     context.startActivity(Intent("com.android.settings.TTS_SETTINGS"))
@@ -410,6 +426,31 @@ fun HomeScreen(
                                     } catch (_: Exception) {}
                                 }
                             }
+                        )
+                    }
+                }
+
+                if (isOfflineHindiVoiceAvailable == false) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp, start = 4.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_warning),
+                            contentDescription = null,
+                            tint = HorizonAmber,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.notice_offline_voice_missing),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            fontFamily = MuktaFontFamily,
+                            color = Color(0xFF8D5B00),
+                            lineHeight = 15.sp
                         )
                     }
                 }
