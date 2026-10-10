@@ -128,19 +128,8 @@ class FatigueEngine(
         val alertnessScore = smoothedAlertness.roundToInt().coerceIn(0, 100)
 
         // 8. Ladder Level Arbitration (ENG-2, D12)
-        val scoreBandLevel = when {
-            alertnessScore >= config.alertnessBandAlertMin -> Level.L0
-            alertnessScore >= config.alertnessBandCautionMin -> Level.L1
-            alertnessScore >= config.alertnessBandFatiguedMin -> Level.L2
-            else -> Level.L3
-        }
-
-        val rawTriggerLevel = when {
-            currentClosureDuration >= config.closureConfirmMs -> Level.L3
-            perclos >= config.perclosL2 -> Level.L2
-            config.blinkSignalEnabled && blinkRatio >= config.blinkRateL1Increase && (now - driveStartTimeMs >= config.blinkRateL1SustainMs) -> Level.L1
-            else -> Level.L0
-        }
+        val scoreBandLevel = currentScoreBandLevel()
+        val rawTriggerLevel = computeRawTriggerLevel(now, currentClosureDuration)
 
         // 9. Intervention ladder onFrame
         val ladderActions = ladder.onFrame(
@@ -162,15 +151,7 @@ class FatigueEngine(
         }
 
         val activeLevel = maxOf(ladder.currentLadderLevel, rawTriggerLevel, scoreBandLevel)
-
-        // State mapping: Hard override if eyes closed >= 2.5 s or activeLevel in [L3, L4, L5] -> CRITICAL
-        val activeState = when {
-            currentClosureDuration >= config.closureConfirmMs -> DriverState.CRITICAL
-            activeLevel in listOf(Level.L3, Level.L4, Level.L5) -> DriverState.CRITICAL
-            activeLevel == Level.L2 -> DriverState.FATIGUED
-            activeLevel == Level.L1 -> DriverState.CAUTION
-            else -> DriverState.NORMAL
-        }
+        val activeState = determineState(activeLevel, currentClosureDuration)
 
         if (ladder.isL5Active) {
             reasons.add(0, "L5: Driver unresponsive")
@@ -223,13 +204,12 @@ class FatigueEngine(
         // Tick ladder timers
         actions.addAll(ladder.onTick(now, faceFound = true))
 
-        val activeLevel = maxOf(ladder.currentLadderLevel, currentScoreBandLevel())
-        val activeState = when {
-            activeLevel in listOf(Level.L3, Level.L4, Level.L5) -> DriverState.CRITICAL
-            activeLevel == Level.L2 -> DriverState.FATIGUED
-            activeLevel == Level.L1 -> DriverState.CAUTION
-            else -> DriverState.NORMAL
-        }
+        val currentClosureDuration = closureStartTimeMs?.let { now - it } ?: 0L
+        val rawTriggerLevel = computeRawTriggerLevel(now, currentClosureDuration)
+        val scoreBandLevel = currentScoreBandLevel()
+
+        val activeLevel = maxOf(ladder.currentLadderLevel, rawTriggerLevel, scoreBandLevel)
+        val activeState = determineState(activeLevel, currentClosureDuration)
 
         val reasons = mutableListOf<String>()
         if (ladder.isL5Active) {
@@ -238,6 +218,11 @@ class FatigueEngine(
             reasons.add("L4: Unresponsive to alarm - Family voice active")
         } else if (ladder.isL3Active) {
             reasons.add("L3: Critical drowsiness detected")
+        } else if (rawTriggerLevel == Level.L2) {
+            val perclos = computePerclos()
+            if (perclos >= config.perclosL2) {
+                reasons.add("PERCLOS high (${(perclos * 100).toInt()}%)")
+            }
         }
 
         return EngineOutput(
@@ -409,6 +394,27 @@ class FatigueEngine(
         }
         while (recentBlinks.isNotEmpty() && recentBlinks.first() < cutoff) {
             recentBlinks.removeFirst()
+        }
+    }
+
+    private fun computeRawTriggerLevel(now: Long, closureDuration: Long): Level {
+        val perclos = computePerclos()
+        val blinkRatio = if (config.blinkSignalEnabled && baseline.blinkRate > 0f) computeBlinkRateRatio(now) else 0.0
+        return when {
+            closureDuration >= config.closureConfirmMs -> Level.L3
+            perclos >= config.perclosL2 -> Level.L2
+            config.blinkSignalEnabled && blinkRatio >= config.blinkRateL1Increase && (now - driveStartTimeMs >= config.blinkRateL1SustainMs) -> Level.L1
+            else -> Level.L0
+        }
+    }
+
+    private fun determineState(activeLevel: Level, closureDuration: Long): DriverState {
+        return when {
+            closureDuration >= config.closureConfirmMs -> DriverState.CRITICAL
+            activeLevel in listOf(Level.L3, Level.L4, Level.L5) -> DriverState.CRITICAL
+            activeLevel == Level.L2 -> DriverState.FATIGUED
+            activeLevel == Level.L1 -> DriverState.CAUTION
+            else -> DriverState.NORMAL
         }
     }
 
