@@ -29,7 +29,7 @@ class TtsSpeaker(private val context: Context) : TextToSpeech.OnInitListener {
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
-            val hindiLocale = Locale("hi", "IN")
+            val hindiLocale = Locale.forLanguageTag("hi-IN")
             val langResult = tts?.isLanguageAvailable(hindiLocale) ?: TextToSpeech.LANG_NOT_SUPPORTED
 
             isHindiAvailable = langResult != TextToSpeech.LANG_MISSING_DATA &&
@@ -38,7 +38,7 @@ class TtsSpeaker(private val context: Context) : TextToSpeech.OnInitListener {
             val activeLocale = if (isHindiAvailable) hindiLocale else Locale.US
             tts?.language = activeLocale
 
-            // Configure audio attributes for alarm / guidance stream
+            // Configure default audio attributes for guidance stream
             val audioAttributes = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
@@ -60,6 +60,7 @@ class TtsSpeaker(private val context: Context) : TextToSpeech.OnInitListener {
 
     /**
      * Speak text with rate and pitch tuned for urgency.
+     * Urgent L3 speech uses AudioAttributes.USAGE_ALARM so it is audible over the siren (AUDIT-014).
      */
     fun speak(text: String, lang: Lang = Lang.HI, urgent: Boolean = false) {
         if (!isInitialized) {
@@ -68,11 +69,23 @@ class TtsSpeaker(private val context: Context) : TextToSpeech.OnInitListener {
         }
 
         val targetLocale = if (lang == Lang.HI && isHindiAvailable) {
-            Locale("hi", "IN")
+            Locale.forLanguageTag("hi-IN")
         } else {
             Locale.US
         }
         tts?.language = targetLocale
+
+        // Urgent speech routes to USAGE_ALARM stream, normal speech to USAGE_ASSISTANCE_NAVIGATION_GUIDANCE (AUDIT-014)
+        val audioUsage = if (urgent) {
+            AudioAttributes.USAGE_ALARM
+        } else {
+            AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE
+        }
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(audioUsage)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+            .build()
+        tts?.setAudioAttributes(audioAttributes)
 
         if (urgent) {
             // Urgent L3 warnings: higher rate and pitch for rapid alertness (VOI-1)
