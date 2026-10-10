@@ -5,13 +5,24 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import java.io.IOException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "jaagrit_settings")
+internal val settingsCorruptionHandler = ReplaceFileCorruptionHandler {
+    emptyPreferences()
+}
+
+private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(
+    name = "jaagrit_settings",
+    corruptionHandler = settingsCorruptionHandler
+)
 
 /**
  * Driver profile & emergency contact preferences persisted locally in Android DataStore.
@@ -19,23 +30,32 @@ private val Context.settingsDataStore: DataStore<Preferences> by preferencesData
  */
 class SettingsStore(private val context: Context) {
 
-    val driverNameFlow: Flow<String> = context.settingsDataStore.data.map { prefs ->
+    private val safePrefsFlow: Flow<Preferences> = context.settingsDataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+
+    val driverNameFlow: Flow<String> = safePrefsFlow.map { prefs ->
         prefs[KEY_DRIVER_NAME] ?: DEFAULT_DRIVER_NAME
     }
 
-    val emergencyContactFlow: Flow<String> = context.settingsDataStore.data.map { prefs ->
+    val emergencyContactFlow: Flow<String> = safePrefsFlow.map { prefs ->
         prefs[KEY_EMERGENCY_CONTACT] ?: ""
     }
 
-    val demoTimersFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
+    val demoTimersFlow: Flow<Boolean> = safePrefsFlow.map { prefs ->
         prefs[KEY_DEMO_TIMERS] ?: false
     }
 
-    val quickCalibrationFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
+    val quickCalibrationFlow: Flow<Boolean> = safePrefsFlow.map { prefs ->
         prefs[KEY_QUICK_CALIBRATION] ?: false
     }
 
-    val appLanguageFlow: Flow<String> = context.settingsDataStore.data.map { prefs ->
+    val appLanguageFlow: Flow<String> = safePrefsFlow.map { prefs ->
         prefs[KEY_APP_LANGUAGE] ?: DEFAULT_LANGUAGE
     }
 

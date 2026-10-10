@@ -8,12 +8,23 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
+import androidx.datastore.preferences.core.emptyPreferences
 import com.jaagrit.app.engine.Baseline
+import java.io.IOException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "jaagrit_baseline")
+internal val baselineCorruptionHandler = ReplaceFileCorruptionHandler {
+    emptyPreferences()
+}
+
+private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
+    name = "jaagrit_baseline",
+    corruptionHandler = baselineCorruptionHandler
+)
 
 /**
  * Persists and retrieves driver's calibrated [Baseline] via Jetpack DataStore (CAL-4).
@@ -21,7 +32,15 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
  */
 class BaselineStore(private val context: Context) {
 
-    val baselineFlow: Flow<Baseline?> = context.dataStore.data.map { prefs ->
+    val baselineFlow: Flow<Baseline?> = context.dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { prefs ->
         val calibratedAt = prefs[KEY_CALIBRATED_AT_MS] ?: return@map null
         val openEar = prefs[KEY_OPEN_EAR] ?: return@map null
         val closedEar = prefs[KEY_CLOSED_EAR] ?: return@map null
