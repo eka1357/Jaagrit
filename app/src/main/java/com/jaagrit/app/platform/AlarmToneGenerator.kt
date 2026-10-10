@@ -43,15 +43,19 @@ class AlarmToneGenerator(
     private val sampleRate = 44100
     private var audioTrack: AudioTrack? = null
     private var isPlaying = false
+    private var isReleased = false
     private var originalAlarmVolume: Int? = null
+
+    val isReleasedState: Boolean get() = isReleased
 
     /**
      * Start playing the looping alarm tone at max volume on USAGE_ALARM.
      * Sets device STREAM_ALARM to maximum and preserves previous volume (AUDIT-014).
+     * Guarded against invocation after release (AUDIT-016).
      */
     @Synchronized
     fun startAlarm() {
-        if (isPlaying) return
+        if (isReleased || isPlaying) return
         try {
             volumeManager?.let { vm ->
                 try {
@@ -119,6 +123,8 @@ class AlarmToneGenerator(
      */
     @Synchronized
     fun release() {
+        if (isReleased) return
+        isReleased = true
         try {
             stopAlarm()
             audioTrack?.release()
