@@ -115,11 +115,11 @@ DRIVE_TIME_RAMP_START_HOURS = 2.0
 DRIVE_TIME_RAMP_END_HOURS = 6.0
 DRIVE_TIME_MAX_PENALTY = 15.0
 
-// Alertness score weights & EMA (D1) — all tunable
-ALERTNESS_WEIGHT_PERCLOS = 30.0
-ALERTNESS_WEIGHT_CLOSURE = 35.0
-ALERTNESS_WEIGHT_BLINK_RATE = 20.0
-ALERTNESS_WEIGHT_HEAD_DROOP = 15.0
+// Alertness score weights & EMA (D1) — all tunable (AUDIT-013 aligned with code values)
+ALERTNESS_WEIGHT_PERCLOS = 30.0     // Ramps to L2 boundary (0.12), max penalty 40.0 at PERCLOS >= 0.25
+ALERTNESS_WEIGHT_CLOSURE = 35.0     // Max penalty for closures approaching 2.5 s
+ALERTNESS_WEIGHT_BLINK_RATE = 25.0  // Max penalty (15.0 at +20% L1 boundary, 25.0 at +50%)
+ALERTNESS_WEIGHT_HEAD_DROOP = 20.0  // Max penalty for sustained head droop
 ALERTNESS_EMA_ALPHA = 0.15
 ```
 Tune these from measured data, not guesses. Record changes in `docs/MEASUREMENTS.md`.

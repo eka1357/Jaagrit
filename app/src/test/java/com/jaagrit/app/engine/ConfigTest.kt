@@ -50,12 +50,32 @@ class ConfigTest {
         assertEquals(6.0, Config.DRIVE_TIME_RAMP_END_HOURS, 0.001)
         assertEquals(15.0, Config.DRIVE_TIME_MAX_PENALTY, 0.001)
 
-        // Alertness weights and EMA
+        // Alertness weights and EMA (AUDIT-013: Head droop = 20, Blink rate = 25, PERCLOS = 30..40)
         assertEquals(30.0, Config.ALERTNESS_WEIGHT_PERCLOS, 0.001)
         assertEquals(35.0, Config.ALERTNESS_WEIGHT_CLOSURE, 0.001)
-        assertEquals(20.0, Config.ALERTNESS_WEIGHT_BLINK_RATE, 0.001)
-        assertEquals(15.0, Config.ALERTNESS_WEIGHT_HEAD_DROOP, 0.001)
+        assertEquals(25.0, Config.ALERTNESS_WEIGHT_BLINK_RATE, 0.001)
+        assertEquals(20.0, Config.ALERTNESS_WEIGHT_HEAD_DROOP, 0.001)
         assertEquals(0.15, Config.ALERTNESS_EMA_ALPHA, 0.001)
+
+        // AUDIT-013 Centralized thresholds
+        assertEquals(5.0, Config.REASON_PENALTY_THRESHOLD, 0.001)
+        assertEquals(3_600_000.0, Config.MS_PER_HOUR, 0.001)
+        assertEquals(80L, Config.BLINK_DURATION_MIN_MS)
+        assertEquals(500L, Config.BLINK_DURATION_MAX_MS)
+        assertEquals(10.0, Config.PERCLOS_RAMP_PENALTY, 0.001)
+        assertEquals(40.0, Config.PERCLOS_MAX_PENALTY, 0.001)
+        assertEquals(500L, Config.CLOSURE_PENALTY_MIN_MS)
+        assertEquals(0.2, Config.BLINK_RATE_MIN_WINDOW_MINUTES, 0.001)
+        assertEquals(15.0, Config.BLINK_RATE_L1_PENALTY, 0.001)
+        assertEquals(0.50, Config.BLINK_RATE_MAX_INCREASE, 0.001)
+        assertEquals(10.0, Config.BLINK_RATE_RAMP_PENALTY, 0.001)
+        assertEquals(25.0, Config.BLINK_RATE_MAX_PENALTY, 0.001)
+        assertEquals(500L, Config.HEAD_DROOP_PENALTY_MIN_MS)
+        assertEquals(16.0f, Config.DEFAULT_BASELINE_BLINK_RATE, 0.001f)
+        assertEquals(1000L, Config.MIN_BLINK_CALCULATION_DURATION_MS)
+        assertEquals(5.0f, Config.BLINK_RATE_CLAMP_MIN, 0.001f)
+        assertEquals(45.0f, Config.BLINK_RATE_CLAMP_MAX, 0.001f)
+        assertEquals(1.5f, Config.HEAD_PITCH_GEOMETRIC_SCALE, 0.001f)
 
         // Alertness score bands
         assertEquals(100, Config.ALERTNESS_INITIAL_SCORE)

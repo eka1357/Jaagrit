@@ -83,34 +83,34 @@ class FatigueEngine(
         // 6a. PERCLOS penalty (0 to 40 points)
         val perclos = computePerclos()
         val perclosPenalty = computePerclosPenalty(perclos)
-        if (perclosPenalty > 5.0) {
+        if (perclosPenalty > config.reasonPenaltyThreshold) {
             reasons.add("PERCLOS high (${(perclos * 100).toInt()}%)")
         }
 
         // 6b. Longest recent closure penalty (0 to 35 points)
         val longestRecentClosureMs = computeLongestClosure(currentClosureDuration, now)
         val closurePenalty = computeClosurePenalty(longestRecentClosureMs)
-        if (closurePenalty > 5.0) {
+        if (closurePenalty > config.reasonPenaltyThreshold) {
             reasons.add("Long eye closure (${"%.1f".format(longestRecentClosureMs / 1000.0)}s)")
         }
 
         // 6c. Blink rate increase penalty (0 to 25 points, gated until M9a per AUDIT-012)
         val blinkRatio = if (config.blinkSignalEnabled) computeBlinkRateRatio(now) else 0.0
         val blinkPenalty = if (config.blinkSignalEnabled) computeBlinkRatePenalty(blinkRatio) else 0.0
-        if (config.blinkSignalEnabled && blinkPenalty > 5.0) {
+        if (config.blinkSignalEnabled && blinkPenalty > config.reasonPenaltyThreshold) {
             reasons.add("Blink rate elevated (+${(blinkRatio * 100).toInt()}% vs baseline)")
         }
 
         // 6d. Head droop penalty (0 to 20 points)
         val headDroopPenalty = computeHeadDroopPenalty(droopDurationMs)
-        if (headDroopPenalty > 5.0) {
+        if (headDroopPenalty > config.reasonPenaltyThreshold) {
             reasons.add("Head droop detected (${f.pitchDeg.toInt()}°)")
         }
 
         // 6e. Drive time penalty ramp (0 to 15 points, 2h..6h ramp)
-        val driveHours = (now - driveStartTimeMs).coerceAtLeast(0L) / 3_600_000.0
+        val driveHours = (now - driveStartTimeMs).coerceAtLeast(0L) / Config.MS_PER_HOUR
         val driveTimePenalty = computeDriveTimePenalty(driveHours)
-        if (driveTimePenalty > 5.0) {
+        if (driveTimePenalty > config.reasonPenaltyThreshold) {
             reasons.add("Long drive duration (${"%.1f".format(driveHours)}h)")
         }
 
@@ -375,8 +375,8 @@ class FatigueEngine(
         } else {
             if (closureStartTimeMs != null) {
                 val duration = now - closureStartTimeMs!!
-                // If duration in blink range [80ms..500ms], record as a blink
-                if (duration in 80L..500L) {
+                // If duration in blink range [blinkDurationMinMs..blinkDurationMaxMs], record as a blink
+                if (duration in config.blinkDurationMinMs..config.blinkDurationMaxMs) {
                     recentBlinks.addLast(now)
                 }
                 recentClosures.addLast(now to duration)
@@ -426,10 +426,10 @@ class FatigueEngine(
                         (config.perclosL2 - config.perclosZeroPenaltyThreshold)
             }
             perclos <= config.perclosMaxPenaltyThreshold -> {
-                config.alertnessWeightPerclos + 10.0 * (perclos - config.perclosL2) /
+                config.alertnessWeightPerclos + config.perclosRampPenalty * (perclos - config.perclosL2) /
                         (config.perclosMaxPenaltyThreshold - config.perclosL2)
             }
-            else -> 40.0
+            else -> config.perclosMaxPenalty
         }
     }
 
@@ -440,15 +440,17 @@ class FatigueEngine(
 
     private fun computeClosurePenalty(longestClosureMs: Long): Double {
         return when {
-            longestClosureMs < 500L -> 0.0
+            longestClosureMs < config.closurePenaltyMinMs -> 0.0
             longestClosureMs >= config.closureConfirmMs -> config.alertnessWeightClosure
-            else -> config.alertnessWeightClosure * (longestClosureMs - 500.0) / (config.closureConfirmMs - 500.0)
+            else -> config.alertnessWeightClosure * (longestClosureMs - config.closurePenaltyMinMs.toDouble()) /
+                    (config.closureConfirmMs - config.closurePenaltyMinMs.toDouble())
         }
     }
 
     private fun computeBlinkRateRatio(now: Long): Double {
         if (baseline.blinkRate <= 0f) return 0.0
-        val windowMinutes = minOf((now - driveStartTimeMs) / 60000.0, 1.0).coerceAtLeast(0.2)
+        val windowMinutes = minOf((now - driveStartTimeMs) / config.perclosWindowMs.toDouble(), 1.0)
+            .coerceAtLeast(config.blinkRateMinWindowMinutes)
         val currentRate = recentBlinks.size / windowMinutes
         return (currentRate - baseline.blinkRate) / baseline.blinkRate
     }
@@ -456,17 +458,19 @@ class FatigueEngine(
     private fun computeBlinkRatePenalty(blinkRatio: Double): Double {
         return when {
             blinkRatio <= 0.0 -> 0.0
-            blinkRatio <= config.blinkRateL1Increase -> 15.0 * (blinkRatio / config.blinkRateL1Increase)
-            blinkRatio <= 0.50 -> 15.0 + 10.0 * (blinkRatio - config.blinkRateL1Increase) / (0.50 - config.blinkRateL1Increase)
-            else -> 25.0
+            blinkRatio <= config.blinkRateL1Increase -> config.blinkRateL1Penalty * (blinkRatio / config.blinkRateL1Increase)
+            blinkRatio <= config.blinkRateMaxIncrease -> config.blinkRateL1Penalty + config.blinkRateRampPenalty *
+                    (blinkRatio - config.blinkRateL1Increase) / (config.blinkRateMaxIncrease - config.blinkRateL1Increase)
+            else -> config.alertnessWeightBlinkRate
         }
     }
 
     private fun computeHeadDroopPenalty(droopDurationMs: Long): Double {
         return when {
-            droopDurationMs < 500L -> 0.0
+            droopDurationMs < config.headDroopPenaltyMinMs -> 0.0
             droopDurationMs >= config.headSustainMs -> config.alertnessWeightHeadDroop
-            else -> config.alertnessWeightHeadDroop * (droopDurationMs - 500.0) / (config.headSustainMs - 500.0)
+            else -> config.alertnessWeightHeadDroop * (droopDurationMs - config.headDroopPenaltyMinMs.toDouble()) /
+                    (config.headSustainMs - config.headDroopPenaltyMinMs.toDouble())
         }
     }
 
