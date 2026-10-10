@@ -88,7 +88,7 @@ class MonitoringPipeline(
     val landmarkerWrapper: FaceLandmarkerWrapper = FaceLandmarkerWrapper(context),
     val cameraController: CameraController = CameraController(context, landmarkerWrapper),
     private val speaker: TtsSpeaker = TtsSpeaker(context),
-    private val alarmToneGenerator: AlarmToneGenerator = AlarmToneGenerator(),
+    private val alarmToneGenerator: AlarmToneGenerator = AlarmToneGenerator(context),
     private val vibeManager: VibeManager = VibeManager(context),
     private val baselineStore: BaselineStore = BaselineStore(context),
     private val settingsStore: SettingsStore = SettingsStore(context),

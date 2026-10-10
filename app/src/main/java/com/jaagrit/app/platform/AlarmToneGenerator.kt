@@ -1,45 +1,77 @@
 package com.jaagrit.app.platform
 
+import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioTrack
 import android.util.Log
 import kotlin.math.sin
 
 /**
- * Programmatic alarm tone generator on USAGE_ALARM at maximum volume (D13, UI-2).
+ * Interface to allow testing and abstracting device volume management (AUDIT-014).
+ */
+interface StreamVolumeManager {
+    fun getVolume(streamType: Int): Int
+    fun getMaxVolume(streamType: Int): Int
+    fun setVolume(streamType: Int, index: Int, flags: Int)
+}
+
+class AndroidStreamVolumeManager(private val context: Context) : StreamVolumeManager {
+    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+
+    override fun getVolume(streamType: Int): Int = audioManager?.getStreamVolume(streamType) ?: 0
+    override fun getMaxVolume(streamType: Int): Int = audioManager?.getStreamMaxVolume(streamType) ?: 100
+    override fun setVolume(streamType: Int, index: Int, flags: Int) {
+        audioManager?.setStreamVolume(streamType, index, flags)
+    }
+}
+
+/**
+ * Programmatic alarm tone generator on USAGE_ALARM at maximum volume (D13, UI-2, AUDIT-014).
  * Strictly synthesizes audio in code — no bundled audio asset files.
  * Generates an unmistakable, repeating two-tone emergency alarm siren pattern.
  */
-class AlarmToneGenerator {
+class AlarmToneGenerator(
+    private val context: Context? = null,
+    internal var volumeManager: StreamVolumeManager? = context?.let { AndroidStreamVolumeManager(it) },
+    audioTrackFactory: (() -> AudioTrack?)? = null
+) {
 
+    private val audioTrackFactory: () -> AudioTrack? = audioTrackFactory ?: { createSynthesizedAlarmTrack() }
     private val tag = "JAAGRIT"
     private val sampleRate = 44100
     private var audioTrack: AudioTrack? = null
     private var isPlaying = false
-
-    init {
-        try {
-            audioTrack = createSynthesizedAlarmTrack()
-        } catch (e: Exception) {
-            Log.e(tag, "Failed to initialize AlarmToneGenerator: ${e.message}", e)
-        }
-    }
+    private var originalAlarmVolume: Int? = null
 
     /**
      * Start playing the looping alarm tone at max volume on USAGE_ALARM.
+     * Sets device STREAM_ALARM to maximum and preserves previous volume (AUDIT-014).
      */
     @Synchronized
     fun startAlarm() {
         if (isPlaying) return
         try {
-            if (audioTrack == null || audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
-                audioTrack = createSynthesizedAlarmTrack()
+            volumeManager?.let { vm ->
+                try {
+                    val currentVol = vm.getVolume(AudioManager.STREAM_ALARM)
+                    val maxVol = vm.getMaxVolume(AudioManager.STREAM_ALARM)
+                    originalAlarmVolume = currentVol
+                    vm.setVolume(AudioManager.STREAM_ALARM, maxVol, 0)
+                    Log.d(tag, "Set STREAM_ALARM to max ($maxVol), saved previous volume ($currentVol)")
+                } catch (e: Exception) {
+                    Log.w(tag, "Failed to set STREAM_ALARM to max: ${e.message}")
+                }
             }
+
+            if (audioTrack == null || audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
+                audioTrack = audioTrackFactory()
+            }
+            isPlaying = true
             audioTrack?.let { track ->
                 track.setVolume(1.0f)
                 track.play()
-                isPlaying = true
                 Log.d(tag, "Alarm tone started on USAGE_ALARM")
             }
         } catch (e: Exception) {
@@ -48,7 +80,7 @@ class AlarmToneGenerator {
     }
 
     /**
-     * Stop and silence the alarm tone.
+     * Stop and silence the alarm tone and restore previous STREAM_ALARM volume (AUDIT-014).
      */
     @Synchronized
     fun stopAlarm() {
@@ -64,6 +96,21 @@ class AlarmToneGenerator {
             Log.d(tag, "Alarm tone stopped")
         } catch (e: Exception) {
             Log.e(tag, "Error stopping alarm tone: ${e.message}", e)
+        } finally {
+            restoreAlarmVolume()
+        }
+    }
+
+    private fun restoreAlarmVolume() {
+        originalAlarmVolume?.let { prevVol ->
+            try {
+                volumeManager?.setVolume(AudioManager.STREAM_ALARM, prevVol, 0)
+                Log.d(tag, "Restored STREAM_ALARM to previous volume ($prevVol)")
+            } catch (e: Exception) {
+                Log.w(tag, "Failed to restore STREAM_ALARM volume: ${e.message}")
+            } finally {
+                originalAlarmVolume = null
+            }
         }
     }
 
