@@ -49,6 +49,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.jaagrit.app.speech.SpeechReadiness
+import com.jaagrit.app.speech.SpeechReadinessChecker
 import com.jaagrit.app.speech.VoiceReadinessChecker
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -129,9 +131,14 @@ fun HomeScreen(
         smsNotifier.checkAvailability()
     }
     var isOfflineHindiVoiceAvailable by remember { mutableStateOf<Boolean?>(null) }
+    var speechReadiness by remember { mutableStateOf<SpeechReadiness?>(null) }
     LaunchedEffect(resumeTick) {
         VoiceReadinessChecker.checkOfflineHindiAvailability(context) { available ->
             isOfflineHindiVoiceAvailable = available
+        }
+        val appLanguage = settingsStore.getAppLanguage()
+        SpeechReadinessChecker.checkReadiness(context, appLanguage) { readiness ->
+            speechReadiness = readiness
         }
     }
 
@@ -425,6 +432,61 @@ fun HomeScreen(
                                     } catch (_: Exception) {}
                                 }
                             }
+                        )
+
+                        HorizontalDivider(
+                            color = HorizonMuted.copy(alpha = 0.6f),
+                            thickness = 1.dp
+                        )
+
+                        // Row 5: Speech commands (offline recognizer)
+                        val speechReady = speechReadiness == SpeechReadiness.READY
+                        val speechStatusText = when (speechReadiness) {
+                            SpeechReadiness.READY -> stringResource(R.string.status_ready)
+                            SpeechReadiness.LANG_PACK_MISSING -> stringResource(R.string.status_offline_pack_missing)
+                            SpeechReadiness.UNAVAILABLE -> stringResource(R.string.status_speech_unavailable)
+                            null -> stringResource(R.string.status_checking)
+                        }
+
+                        ReadinessRow(
+                            iconRes = R.drawable.ic_mic,
+                            label = stringResource(R.string.readiness_speech_recognizer),
+                            statusText = speechStatusText,
+                            isReady = speechReady,
+                            onClick = {
+                                try {
+                                    context.startActivity(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS))
+                                } catch (_: Exception) {
+                                    try {
+                                        context.startActivity(Intent(Settings.ACTION_SETTINGS))
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                        )
+                    }
+                }
+
+                if (speechReadiness == SpeechReadiness.LANG_PACK_MISSING || speechReadiness == SpeechReadiness.UNAVAILABLE) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp, start = 4.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_warning),
+                            contentDescription = null,
+                            tint = HorizonAmber,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.notice_speech_offline_missing),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            fontFamily = MuktaFontFamily,
+                            color = Color(0xFF8D5B00),
+                            lineHeight = 15.sp
                         )
                     }
                 }
