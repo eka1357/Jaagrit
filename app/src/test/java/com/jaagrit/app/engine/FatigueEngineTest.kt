@@ -376,5 +376,51 @@ class FatigueEngineTest {
         assertTrue(output.actions.none { it is Action.PlayFamilyClip })
         assertTrue(output.actions.none { it is Action.SendSms })
     }
+
+    @Test
+    fun testAudit023_onTickAndOnFrame_returnIdenticalLevelAndState() {
+        // Scenario 1: Raw L2 trigger (PERCLOS >= 0.12) while score band might still be L0/Caution
+        engine.resetDrive()
+        for (i in 0 until 50) {
+            clock.advance(100L)
+            // 1 out of 6 frames closed -> PERCLOS ~0.16 >= 0.12 (raw L2 trigger)
+            val ear = if (i % 6 == 0) 0.05f else 0.28f
+            engine.onFrame(frame(earAvg = ear, pitchDeg = 5f))
+        }
+
+        val frameOutput = engine.onFrame(frame(earAvg = 0.28f, pitchDeg = 5f))
+        val tickOutput = engine.onTick()
+
+        assertEquals("onFrame and onTick must return identical level on raw L2", frameOutput.level, tickOutput.level)
+        assertEquals("onFrame and onTick must return identical state on raw L2", frameOutput.state, tickOutput.state)
+        assertEquals(Level.L2, tickOutput.level)
+        assertEquals(DriverState.FATIGUED, tickOutput.state)
+
+        // Scenario 2: Severe closure (>= 2.5s) triggering hard CRITICAL override
+        engine.resetDrive()
+        var lastClosureFrame = EngineOutput.INITIAL
+        for (i in 0 until 26) {
+            clock.advance(100L)
+            lastClosureFrame = engine.onFrame(frame(earAvg = 0.04f))
+        }
+        val closureTick = engine.onTick()
+
+        assertEquals("onFrame and onTick must return identical level on closure L3", lastClosureFrame.level, closureTick.level)
+        assertEquals("onFrame and onTick must return identical state on closure L3", lastClosureFrame.state, closureTick.state)
+        assertEquals(Level.L3, closureTick.level)
+        assertEquals(DriverState.CRITICAL, closureTick.state)
+
+        // Scenario 3: Normal open eyes driving (Level L0, NORMAL)
+        engine.onVoice(VoiceEvent.ImAwake)
+        clock.advance(5000L)
+        val normalFrame = engine.onFrame(frame(earAvg = 0.28f))
+        val normalTick = engine.onTick()
+
+        assertEquals(normalFrame.level, normalTick.level)
+        assertEquals(normalFrame.state, normalTick.state)
+        assertEquals(Level.L0, normalTick.level)
+        assertEquals(DriverState.NORMAL, normalTick.state)
+    }
 }
+
 
