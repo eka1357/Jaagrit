@@ -47,6 +47,35 @@ class FeatureExtractorTest {
     }
 
     @Test
+    fun verifyPixelSpaceEarCalculation() {
+        val numLandmarks = 468
+        val landmarks = MutableList(numLandmarks) { FeatureExtractor.Point3D(0.5f, 0.5f, 0f) }
+
+        // Simulated portrait frame: 480 width x 640 height (3:4 aspect ratio)
+        val imageWidth = 480f
+        val imageHeight = 640f
+
+        // Horizontal eye width: 48 pixels in a 480-wide frame -> dx = 0.10
+        landmarks[33] = FeatureExtractor.Point3D(100f / imageWidth, 200f / imageHeight, 0f)
+        landmarks[133] = FeatureExtractor.Point3D(148f / imageWidth, 200f / imageHeight, 0f)
+
+        // Vertical eye height: 16 pixels in a 640-high frame -> dy = 0.025
+        landmarks[160] = FeatureExtractor.Point3D(116f / imageWidth, 192f / imageHeight, 0f)
+        landmarks[144] = FeatureExtractor.Point3D(116f / imageWidth, 208f / imageHeight, 0f)
+        landmarks[158] = FeatureExtractor.Point3D(132f / imageWidth, 192f / imageHeight, 0f)
+        landmarks[153] = FeatureExtractor.Point3D(132f / imageWidth, 208f / imageHeight, 0f)
+
+        // Without pixel-space scaling (1x1 normalized), EAR is distorted by aspect ratio (0.25)
+        val earNormalized = FeatureExtractor.calculateEar(landmarks, Config.LANDMARKS_EYE_RIGHT, 1f, 1f)
+        assertEquals(0.25f, earNormalized, 0.005f)
+
+        // With pixel-space scaling (480x640), EAR reflects true isotropic geometry: 16 / 48 = 0.333
+        val earPixelSpace = FeatureExtractor.calculateEar(landmarks, Config.LANDMARKS_EYE_RIGHT, imageWidth, imageHeight)
+        assertEquals(16f / 48f, earPixelSpace, 0.005f)
+        assertTrue("Isotropic pixel-space EAR must be independent of camera aspect ratio", earPixelSpace > earNormalized)
+    }
+
+    @Test
     fun verifySyntheticNormalVsYawningMouthMar() {
         val numLandmarks = 468
         val normalLandmarks = MutableList(numLandmarks) { FeatureExtractor.Point3D(0.5f, 0.7f, 0f) }

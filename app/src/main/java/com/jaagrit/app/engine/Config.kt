@@ -76,6 +76,12 @@ data class Config(
     // Minimum acceptable difference between open and closed EAR
     val calibrationMinGap: Float = CALIBRATION_MIN_GAP,
 
+    // Default uncalibrated baseline (AUDIT-018: isotropic pixel space)
+    val defaultBaselineOpenEar: Float = DEFAULT_BASELINE_OPEN_EAR,
+    val defaultBaselineClosedEar: Float = DEFAULT_BASELINE_CLOSED_EAR,
+    val defaultBaselineThreshold: Float = DEFAULT_BASELINE_THRESHOLD,
+    val defaultBaselineMar: Float = DEFAULT_BASELINE_MAR,
+
     // False alert limit (LAD-6)
     val falseAlertLimitCount: Int = FALSE_ALERT_LIMIT_COUNT,
     val falseAlertLimitWindowMs: Long = FALSE_ALERT_LIMIT_WINDOW_MS,
@@ -199,6 +205,14 @@ data class Config(
         const val QUICK_CALIBRATION_OPEN_MS = 5000L
         const val QUICK_CALIBRATION_CLOSED_MS = 2000L
         const val DEFAULT_RESPONSE_LATENCY_MS = 1500L
+
+        // Default baseline constants in isotropic pixel space (AUDIT-018)
+        // With isotropic pixel coordinates, typical open EAR is 0.30–0.36; closed EAR is 0.05–0.08.
+        // Midpoint threshold is 0.20 (0.08 + 0.5 * (0.32 - 0.08)).
+        const val DEFAULT_BASELINE_OPEN_EAR = 0.32f
+        const val DEFAULT_BASELINE_CLOSED_EAR = 0.08f
+        const val DEFAULT_BASELINE_THRESHOLD = 0.20f
+        const val DEFAULT_BASELINE_MAR = 0.05f
 
         // False alert limits
         const val FALSE_ALERT_LIMIT_COUNT = 3

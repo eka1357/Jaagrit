@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
@@ -41,26 +42,31 @@ class BaselineStore(private val context: Context) {
             }
         }
         .map { prefs ->
-        val calibratedAt = prefs[KEY_CALIBRATED_AT_MS] ?: return@map null
-        val openEar = prefs[KEY_OPEN_EAR] ?: return@map null
-        val closedEar = prefs[KEY_CLOSED_EAR] ?: return@map null
-        val threshold = prefs[KEY_THRESHOLD] ?: return@map null
-        val mar = prefs[KEY_MAR] ?: 0f
-        val blinkRate = prefs[KEY_BLINK_RATE] ?: 16.0f
-        val latency = prefs[KEY_RESPONSE_LATENCY_MS] ?: 1500L
-        val isValid = prefs[KEY_IS_VALID] ?: true
+            val schemaVersion = prefs[KEY_SCHEMA_VERSION] ?: 0
+            if (schemaVersion != BASELINE_SCHEMA_VERSION) {
+                // Incompatible schema version (e.g., legacy normalized v1 baselines vs pixel-space v2)
+                return@map null
+            }
+            val calibratedAt = prefs[KEY_CALIBRATED_AT_MS] ?: return@map null
+            val openEar = prefs[KEY_OPEN_EAR] ?: return@map null
+            val closedEar = prefs[KEY_CLOSED_EAR] ?: return@map null
+            val threshold = prefs[KEY_THRESHOLD] ?: return@map null
+            val mar = prefs[KEY_MAR] ?: 0f
+            val blinkRate = prefs[KEY_BLINK_RATE] ?: 16.0f
+            val latency = prefs[KEY_RESPONSE_LATENCY_MS] ?: 1500L
+            val isValid = prefs[KEY_IS_VALID] ?: true
 
-        Baseline(
-            openEar = openEar,
-            closedEar = closedEar,
-            threshold = threshold,
-            mar = mar,
-            blinkRate = blinkRate,
-            responseLatencyMs = latency,
-            calibratedAtMs = calibratedAt,
-            isValid = isValid
-        )
-    }
+            Baseline(
+                openEar = openEar,
+                closedEar = closedEar,
+                threshold = threshold,
+                mar = mar,
+                blinkRate = blinkRate,
+                responseLatencyMs = latency,
+                calibratedAtMs = calibratedAt,
+                isValid = isValid
+            )
+        }
 
     suspend fun getBaseline(): Baseline? {
         return baselineFlow.first()
@@ -68,6 +74,7 @@ class BaselineStore(private val context: Context) {
 
     suspend fun saveBaseline(baseline: Baseline) {
         context.dataStore.edit { prefs ->
+            prefs[KEY_SCHEMA_VERSION] = BASELINE_SCHEMA_VERSION
             prefs[KEY_OPEN_EAR] = baseline.openEar
             prefs[KEY_CLOSED_EAR] = baseline.closedEar
             prefs[KEY_THRESHOLD] = baseline.threshold
@@ -81,6 +88,7 @@ class BaselineStore(private val context: Context) {
 
     suspend fun clearBaseline() {
         context.dataStore.edit { prefs ->
+            prefs.remove(KEY_SCHEMA_VERSION)
             prefs.remove(KEY_OPEN_EAR)
             prefs.remove(KEY_CLOSED_EAR)
             prefs.remove(KEY_THRESHOLD)
@@ -93,13 +101,15 @@ class BaselineStore(private val context: Context) {
     }
 
     companion object {
-        private val KEY_OPEN_EAR = floatPreferencesKey("baseline_open_ear")
-        private val KEY_CLOSED_EAR = floatPreferencesKey("baseline_closed_ear")
-        private val KEY_THRESHOLD = floatPreferencesKey("baseline_threshold")
-        private val KEY_MAR = floatPreferencesKey("baseline_mar")
-        private val KEY_BLINK_RATE = floatPreferencesKey("baseline_blink_rate")
-        private val KEY_RESPONSE_LATENCY_MS = longPreferencesKey("baseline_response_latency_ms")
-        private val KEY_CALIBRATED_AT_MS = longPreferencesKey("baseline_calibrated_at_ms")
-        private val KEY_IS_VALID = booleanPreferencesKey("baseline_is_valid")
+        const val BASELINE_SCHEMA_VERSION = 2
+        val KEY_SCHEMA_VERSION = intPreferencesKey("baseline_schema_version")
+        val KEY_OPEN_EAR = floatPreferencesKey("baseline_open_ear")
+        val KEY_CLOSED_EAR = floatPreferencesKey("baseline_closed_ear")
+        val KEY_THRESHOLD = floatPreferencesKey("baseline_threshold")
+        val KEY_MAR = floatPreferencesKey("baseline_mar")
+        val KEY_BLINK_RATE = floatPreferencesKey("baseline_blink_rate")
+        val KEY_RESPONSE_LATENCY_MS = longPreferencesKey("baseline_response_latency_ms")
+        val KEY_CALIBRATED_AT_MS = longPreferencesKey("baseline_calibrated_at_ms")
+        val KEY_IS_VALID = booleanPreferencesKey("baseline_is_valid")
     }
 }
