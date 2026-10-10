@@ -194,4 +194,40 @@
     <string name="status_offline_pack_missing">offline pack missing</string>
     <string name="perm_audio_title">Microphone</string>
     <string name="perm_audio_desc">Allows hands-free voice questions like asking driving time or alertness.</string>
+
+    <!-- Dashboard & Report Screen (M10, OFF-1 to OFF-4) -->
+    <string name="dashboard_title">Trip Safety Dashboard</string>
+    <string name="dashboard_subtitle">Mirror-ready telemetry &amp; fleet report</string>
+    <string name="dashboard_btn_open">Dashboard</string>
+    <string name="dashboard_nav_tooltip">View Dashboard &amp; Report</string>
+    <string name="dashboard_card_safety_score">Trip Safety Score</string>
+    <string name="dashboard_rating_excellent">EXCELLENT</string>
+    <string name="dashboard_rating_good">GOOD</string>
+    <string name="dashboard_rating_moderate">MODERATE RISK</string>
+    <string name="dashboard_rating_high">HIGH RISK</string>
+    <string name="dashboard_driver_profile">Driver Profile</string>
+    <string name="dashboard_driver_name">Driver: %s</string>
+    <string name="dashboard_emergency_contact">Emergency Contact: %s</string>
+    <string name="dashboard_calib_threshold">Closure Threshold: EAR &lt; %s</string>
+    <string name="dashboard_calib_blink">Blink Baseline: %s /min</string>
+    <string name="dashboard_calib_latency">Math Latency: %s ms</string>
+    <string name="dashboard_graph_title">Alertness Over Time</string>
+    <string name="dashboard_graph_empty">No telemetry samples recorded for this trip yet.</string>
+    <string name="dashboard_timeline_title">Alert Intervention Timeline</string>
+    <string name="dashboard_timeline_empty">Zero fatigue interventions triggered. Safe driving throughout trip.</string>
+    <string name="dashboard_btn_copy_last_alert">Copy Last Alert</string>
+    <string name="dashboard_alert_copied">Alert summary copied to clipboard</string>
+    <string name="dashboard_no_alert_to_copy">No alerts recorded to copy</string>
+    <string name="dashboard_btn_export_pdf">Export PDF</string>
+    <string name="dashboard_btn_export_json">Export JSON</string>
+    <string name="dashboard_btn_share_pdf">Share PDF</string>
+    <string name="dashboard_btn_open_pdf">Open PDF</string>
+    <string name="dashboard_exporting">Generating Report...</string>
+    <string name="dashboard_export_success">Saved to: %s</string>
+    <string name="dashboard_export_failed">Export failed: %s</string>
+    <string name="dashboard_btn_start_drive">START DRIVE</string>
+    <string name="dashboard_btn_stop_drive">STOP DRIVE</string>
+    <string name="dashboard_active_drive_banner">Active Drive In Progress</string>
+    <string name="dashboard_honest_limits_title">Honest Limits &amp; Disclaimer</string>
+    <string name="dashboard_honest_limits_text">Jaagrit estimates driver alertness heuristically using on-device computer vision. Factors such as low ambient lighting, dark sunglasses, extreme head tilt (>30°), or camera angle may reduce accuracy. This system does not provide medical diagnosis or replace safe driving practices.</string>
 </resources>

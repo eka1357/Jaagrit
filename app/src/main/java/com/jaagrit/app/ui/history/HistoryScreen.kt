@@ -18,6 +18,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -62,6 +64,7 @@ import java.util.Locale
 @Composable
 fun HistoryScreen(
     onBack: () -> Unit,
+    onOpenDashboard: (Long) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -134,6 +137,7 @@ fun HistoryScreen(
                     TripCardItem(
                         trip = trip,
                         repository = repository,
+                        onOpenDashboard = onOpenDashboard,
                         onDeleteTrip = {
                             coroutineScope.launch {
                                 repository.getTripById(trip.id)?.let {
@@ -222,6 +226,7 @@ private fun SummaryStat(title: String, value: String, color: Color) {
 private fun TripCardItem(
     trip: Trip,
     repository: TripRepository,
+    onOpenDashboard: (Long) -> Unit,
     onDeleteTrip: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -435,6 +440,34 @@ private fun TripCardItem(
                     } else {
                         events.forEach { event ->
                             AlertEventItem(event = event)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Button(
+                        onClick = { onOpenDashboard(trip.id) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_check),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "View Dashboard & Export Report",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }

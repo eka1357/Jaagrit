@@ -194,4 +194,40 @@
     <string name="status_offline_pack_missing">ऑफ़लाइन पैक नहीं है</string>
     <string name="perm_audio_title">माइक्रोफ़ोन</string>
     <string name="perm_audio_desc">गाड़ी चलाते समय वॉयस प्रश्न पूछने की सुविधा देता है।</string>
+
+    <!-- Dashboard & Report Screen (M10, OFF-1 to OFF-4) -->
+    <string name="dashboard_title">यात्रा सुरक्षा डैशबोर्ड</string>
+    <string name="dashboard_subtitle">मिरर-रेडी टेलीमेट्री और रिपोर्ट</string>
+    <string name="dashboard_btn_open">डैशबोर्ड</string>
+    <string name="dashboard_nav_tooltip">डैशबोर्ड और रिपोर्ट देखें</string>
+    <string name="dashboard_card_safety_score">यात्रा सुरक्षा स्कोर</string>
+    <string name="dashboard_rating_excellent">उत्कृष्ट</string>
+    <string name="dashboard_rating_good">अच्छा</string>
+    <string name="dashboard_rating_moderate">मध्यम जोखिम</string>
+    <string name="dashboard_rating_high">उच्च जोखिम</string>
+    <string name="dashboard_driver_profile">ड्राइवर प्रोफ़ाइल</string>
+    <string name="dashboard_driver_name">ड्राइवर: %s</string>
+    <string name="dashboard_emergency_contact">आपातकालीन संपर्क: %s</string>
+    <string name="dashboard_calib_threshold">पलक बंद सीमा: EAR &lt; %s</string>
+    <string name="dashboard_calib_blink">सामान्य पलक दर: %s /मिनट</string>
+    <string name="dashboard_calib_latency">गणित उत्तर समय: %s मिलीसेकंड</string>
+    <string name="dashboard_graph_title">समय के साथ सतर्कता</string>
+    <string name="dashboard_graph_empty">इस यात्रा के लिए अभी कोई डेटा दर्ज नहीं हुआ है।</string>
+    <string name="dashboard_timeline_title">अलर्ट हस्तक्षेप टाइमलाइन</string>
+    <string name="dashboard_timeline_empty">कोई थकान अलर्ट नहीं मिला। सुरक्षित यात्रा।</string>
+    <string name="dashboard_btn_copy_last_alert">अंतिम अलर्ट कॉपी करें</string>
+    <string name="dashboard_alert_copied">अलर्ट सारांश क्लिपबोर्ड पर कॉपी किया गया</string>
+    <string name="dashboard_no_alert_to_copy">कॉपी करने के लिए कोई अलर्ट नहीं है</string>
+    <string name="dashboard_btn_export_pdf">पीडीएफ निर्यात करें</string>
+    <string name="dashboard_btn_export_json">JSON निर्यात करें</string>
+    <string name="dashboard_btn_share_pdf">पीडीएफ साझा करें</string>
+    <string name="dashboard_btn_open_pdf">पीडीएफ खोलें</string>
+    <string name="dashboard_exporting">रिपोर्ट बन रही है...</string>
+    <string name="dashboard_export_success">यहाँ सुरक्षित: %s</string>
+    <string name="dashboard_export_failed">निर्यात विफल: %s</string>
+    <string name="dashboard_btn_start_drive">ड्राइव शुरू करें</string>
+    <string name="dashboard_btn_stop_drive">ड्राइव समाप्त करें</string>
+    <string name="dashboard_active_drive_banner">सक्रिय ड्राइव जारी है</string>
+    <string name="dashboard_honest_limits_title">ईमानदार सीमाएँ और अस्वीकरण</string>
+    <string name="dashboard_honest_limits_text">जागृत केवल ऑन-डिवाइस कंप्यूटर विज़न के आधार पर सतर्कता का अनुमान लगाता है। कम रोशनी, धूप का चश्मा या सिर का अत्यधिक मुड़ना (>30°) सटीकता को प्रभावित कर सकता है। यह चिकित्सीय निदान नहीं है।</string>
 </resources>

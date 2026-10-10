@@ -207,6 +207,25 @@ data class Config(
         // Left eye indices: [inner_corner, top1, top2, outer_corner, bottom2, bottom1]
         val LANDMARKS_EYE_LEFT = intArrayOf(362, 385, 387, 263, 373, 380)
 
+        // Trip safety score calculation parameters (M10, OFF-3)
+        const val SAFETY_SCORE_CRITICAL_PENALTY = 15.0
+        const val SAFETY_SCORE_WARNING_PENALTY = 5.0
+
+        /**
+         * Computes overall trip safety score (0..100) from telemetry averages and alert counts.
+         */
+        fun calculateTripSafetyScore(
+            avgAlertness: Double?,
+            alertCount: Int,
+            criticalCount: Int
+        ): Int {
+            val base = avgAlertness ?: 100.0
+            val nonCriticalAlerts = (alertCount - criticalCount).coerceAtLeast(0)
+            val penalty = (criticalCount * SAFETY_SCORE_CRITICAL_PENALTY) +
+                    (nonCriticalAlerts * SAFETY_SCORE_WARNING_PENALTY)
+            return Math.round((base - penalty).coerceIn(0.0, 100.0)).toInt()
+        }
+
         // Default instance
         val DEFAULT = Config()
     }

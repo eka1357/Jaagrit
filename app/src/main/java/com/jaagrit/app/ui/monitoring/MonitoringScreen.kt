@@ -924,20 +924,21 @@ private fun ActiveMonitoringContent(
                     }
                 }
 
-                // End Drive button
+                // End Drive button (large and reachable for remote control / Office Kit)
                 Button(
                     onClick = onEndDrive,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp),
-                    shape = RoundedCornerShape(14.dp),
+                        .height(56.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error
-                    )
+                    ),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
                 ) {
                     Text(
                         text = stringResource(R.string.btn_end_drive),
-                        fontSize = 15.sp,
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onError
                     )

@@ -89,6 +89,7 @@ fun HomeScreen(
     onNavigateToCalibration: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToHistory: () -> Unit,
+    onNavigateToDashboard: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -501,8 +502,28 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    OutlinedButton(
+                        onClick = onNavigateToDashboard,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.2.dp, HorizonForest),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = HorizonForest
+                        )
+                    ) {
+                        Text(
+                            text = stringResource(R.string.dashboard_btn_open),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = MuktaFontFamily,
+                            color = HorizonForest
+                        )
+                    }
+
                     OutlinedButton(
                         onClick = onNavigateToHistory,
                         modifier = Modifier
@@ -516,7 +537,7 @@ fun HomeScreen(
                     ) {
                         Text(
                             text = stringResource(R.string.btn_history_short),
-                            fontSize = 14.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             fontFamily = MuktaFontFamily,
                             color = HorizonForest
@@ -538,7 +559,7 @@ fun HomeScreen(
                             text = stringResource(
                                 if (isCalibrated) R.string.btn_recalibrate_short else R.string.btn_calibrate_short
                             ),
-                            fontSize = 14.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             fontFamily = MuktaFontFamily,
                             color = HorizonForest
