@@ -294,7 +294,7 @@ fun DashboardScreen(
                                     isExporting = false
                                     Toast.makeText(
                                         context,
-                                        context.getString(R.string.dashboard_export_success, result.pdfFile.name),
+                                        context.resources.getString(R.string.dashboard_export_success, result.pdfFile.name),
                                         Toast.LENGTH_LONG
                                     ).show()
                                 }
@@ -492,7 +492,7 @@ fun DashboardScreen(
                                     isExporting = false
                                     Toast.makeText(
                                         context,
-                                        context.getString(R.string.dashboard_export_success, result.pdfFile.name),
+                                        context.resources.getString(R.string.dashboard_export_success, result.pdfFile.name),
                                         Toast.LENGTH_LONG
                                     ).show()
                                 }

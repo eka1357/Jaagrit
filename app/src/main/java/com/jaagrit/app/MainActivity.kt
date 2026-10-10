@@ -22,6 +22,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.jaagrit.app.data.BaselineStore
 import com.jaagrit.app.data.SettingsStore
 import com.jaagrit.app.ui.calibration.CalibrationScreen
 import com.jaagrit.app.ui.dashboard.DashboardScreen
@@ -97,6 +98,18 @@ class MainActivity : ComponentActivity() {
             ) {
                 JaagritTheme(isHindi = isHindi) {
                     val navController = rememberNavController()
+                    val baselineStore = remember { BaselineStore(applicationContext) }
+
+                    fun startDriveChecked() {
+                        coroutineScope.launch {
+                            if (baselineStore.hasSavedBaselineWithCurrentSchema()) {
+                                navController.navigate("monitoring")
+                            } else {
+                                navController.navigate("calibration")
+                            }
+                        }
+                    }
+
                     NavHost(
                         navController = navController,
                         startDestination = "home"
@@ -110,7 +123,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onStartDrive = {
-                                    navController.navigate("monitoring")
+                                    startDriveChecked()
                                 },
                                 onNavigateToCalibration = {
                                     navController.navigate("calibration")
@@ -167,7 +180,7 @@ class MainActivity : ComponentActivity() {
                                     navController.popBackStack()
                                 },
                                 onStartDrive = {
-                                    navController.navigate("monitoring")
+                                    startDriveChecked()
                                 },
                                 onStopDrive = {
                                     navController.popBackStack()
@@ -185,7 +198,7 @@ class MainActivity : ComponentActivity() {
                                     navController.popBackStack()
                                 },
                                 onStartDrive = {
-                                    navController.navigate("monitoring")
+                                    startDriveChecked()
                                 },
                                 onStopDrive = {
                                     navController.popBackStack()

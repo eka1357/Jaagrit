@@ -60,10 +60,10 @@
     <string name="btn_trip_history">यात्रा इतिहास और लॉग</string>
 
     <!-- Uncalibrated Dialog -->
-    <string name="dialog_uncalibrated_title">ड्राइवर प्रोफ़ाइल कैलिब्रेट करें?</string>
-    <string name="dialog_uncalibrated_body">कैलिब्रेशन में केवल 15 सेकंड लगते हैं। यह आपकी आँखों और पलकों के अनुसार अलर्ट सेट करता है, जिससे गलत अलार्म कम होते हैं।</string>
+    <string name="dialog_uncalibrated_title">कैलिब्रेशन आवश्यक है</string>
+    <string name="dialog_uncalibrated_body">ड्राइव शुरू करने से पहले ऐप के वर्तमान संस्करण के अनुसार चेहरे का कैलिब्रेशन आवश्यक है। कैलिब्रेशन में केवल 15 सेकंड लगते हैं और यह सटीक सीमाएँ तय करता है।</string>
     <string name="dialog_btn_calibrate_now">अभी कैलिब्रेट करें</string>
-    <string name="dialog_btn_start_defaults">डिफ़ॉल्ट के साथ शुरू करें</string>
+    <string name="dialog_btn_cancel">रद्द करें</string>
 
     <!-- Monitoring Screen -->
     <string name="monitoring_title">ड्राइविंग सतर्कता मॉनिटर</string>

@@ -62,5 +62,15 @@ class DataStoreCorruptionTest {
             "Legacy v1 baseline without schema version must not match current schema version",
             legacyVersion != BaselineStore.BASELINE_SCHEMA_VERSION
         )
+
+        // Older or future schema versions must also be rejected
+        org.junit.Assert.assertNotEquals(BaselineStore.BASELINE_SCHEMA_VERSION, 1)
+        org.junit.Assert.assertNotEquals(BaselineStore.BASELINE_SCHEMA_VERSION, 3)
+    }
+
+    @Test
+    fun testDefaultBaseline_isNeverValid() {
+        // Baseline.DEFAULT must have isValid == false to prevent silent uncalibrated operation
+        org.junit.Assert.assertFalse(com.jaagrit.app.engine.Baseline.DEFAULT.isValid)
     }
 }
