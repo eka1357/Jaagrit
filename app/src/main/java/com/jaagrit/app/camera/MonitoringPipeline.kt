@@ -143,13 +143,47 @@ class MonitoringPipeline(
     val uiState: StateFlow<MonitoringUiState> = _uiState.asStateFlow()
 
     private var isStarted = false
+    private var lastFrameRealtimeMs: Long = 0L
+    private var isBackgrounded: Boolean = false
+    private var boundLifecycleOwner: LifecycleOwner? = null
+    private var boundPreviewView: PreviewView? = null
+
+    /**
+     * Stop camera, alarm, and TTS cleanly when app is backgrounded (AUDIT-015).
+     */
+    fun onAppBackgrounded() {
+        Log.i(tag, "MonitoringPipeline: App backgrounded, stopping camera, alarm, TTS cleanly (AUDIT-015)")
+        isBackgrounded = true
+        cameraController.stopCamera()
+        alarmToneGenerator.stopAlarm()
+        familyClipPlayer.stop()
+        vibeManager.cancel()
+        speaker.stop()
+    }
+
+    /**
+     * Resume camera when app returns to foreground (AUDIT-015).
+     */
+    fun onAppForegrounded() {
+        Log.i(tag, "MonitoringPipeline: App foregrounded, resuming camera (AUDIT-015)")
+        isBackgrounded = false
+        lastFrameRealtimeMs = clock.nowMs()
+        val owner = boundLifecycleOwner
+        val pv = boundPreviewView
+        if (owner != null && pv != null && isStarted) {
+            cameraController.startCamera(owner, pv)
+        }
+    }
 
     /**
      * Start the camera preview and processing pipeline.
      */
     fun start(lifecycleOwner: LifecycleOwner, previewView: PreviewView) {
+        boundLifecycleOwner = lifecycleOwner
+        boundPreviewView = previewView
         if (isStarted) return
         isStarted = true
+        lastFrameRealtimeMs = clock.nowMs()
         Log.i(tag, "Starting MonitoringPipeline session")
 
         // 1. Create Room Trip off main thread
@@ -308,18 +342,40 @@ class MonitoringPipeline(
         vibeManager.cancel()
         speaker.shutdown()
         cameraController.release()
+        boundLifecycleOwner = null
+        boundPreviewView = null
     }
 
     // --- Private Processing Logic (Sequential on engineDispatcher) ---
 
     private fun processVisionResult(result: VisionResult) {
+        lastFrameRealtimeMs = clock.nowMs()
         val output = engine.onFrame(result.faceFrame)
         handleEngineOutput(output, faceFound = result.faceFound, visionResult = result)
     }
 
     private fun processTick() {
-        val output = engine.onTick()
-        handleEngineOutput(output, faceFound = _uiState.value.faceFound, visionResult = null)
+        if (isBackgrounded) return
+
+        val now = clock.nowMs()
+        // Stale-frame detection (AUDIT-015): no frame for more than 1s treated as FACE_LOST and never escalates
+        val isStale = lastFrameRealtimeMs > 0L && (now - lastFrameRealtimeMs > 1000L)
+        val output = if (isStale) {
+            val staleFrame = FaceFrame(
+                tsMs = now,
+                faceFound = false,
+                earL = 0f,
+                earR = 0f,
+                mar = 0f,
+                pitchDeg = 0f,
+                yawDeg = 0f,
+                rollDeg = 0f
+            )
+            engine.onFrame(staleFrame)
+        } else {
+            engine.onTick()
+        }
+        handleEngineOutput(output, faceFound = if (isStale) false else _uiState.value.faceFound, visionResult = null)
     }
 
     private fun processImAwake() {

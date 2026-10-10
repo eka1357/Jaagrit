@@ -4,11 +4,14 @@ import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.view.WindowManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.view.PreviewView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -158,6 +161,16 @@ fun MonitoringScreen(
         }
     }
 
+    // Lock monitoring screen to portrait (AUDIT-015)
+    DisposableEffect(Unit) {
+        val activity = context.findActivity()
+        val originalOrientation = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        onDispose {
+            activity?.requestedOrientation = originalOrientation
+        }
+    }
+
     val showPreDrive = (!cameraGranted || !smsGranted || !locationGranted) && !preDriveDismissed
 
     Scaffold(
@@ -207,7 +220,20 @@ private fun ActiveMonitoringContent(
     var showDebugPanel by remember { mutableStateOf(false) }
 
     DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> {
+                    pipeline.onAppBackgrounded()
+                }
+                Lifecycle.Event.ON_START -> {
+                    pipeline.onAppForegrounded()
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
             pipeline.release()
         }
     }
