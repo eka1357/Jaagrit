@@ -8,6 +8,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.jaagrit.app.ui.calibration.CalibrationScreen
+import com.jaagrit.app.ui.history.HistoryScreen
 import com.jaagrit.app.ui.home.HomeScreen
 import com.jaagrit.app.ui.monitoring.MonitoringScreen
 import com.jaagrit.app.ui.settings.SettingsScreen
@@ -34,6 +35,16 @@ class MainActivity : ComponentActivity() {
                             },
                             onNavigateToSettings = {
                                 navController.navigate("settings")
+                            },
+                            onNavigateToHistory = {
+                                navController.navigate("history")
+                            }
+                        )
+                    }
+                    composable("history") {
+                        HistoryScreen(
+                            onBack = {
+                                navController.popBackStack()
                             }
                         )
                     }
