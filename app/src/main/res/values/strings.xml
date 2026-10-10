@@ -206,9 +206,13 @@
     <string name="voice_err_no_recognizer">On-device speech recognition unavailable</string>
     <string name="voice_err_lang_pack_missing">Offline speech language pack missing</string>
     <string name="voice_err_mic_blocked_alert">Microphone blocked during active alert</string>
-    <string name="voice_err_busy">Speech recognizer busy, tap again</string>
+    <string name="voice_err_busy">Voice service is busy. Try again or use the buttons.</string>
     <string name="voice_err_no_speech">No speech detected</string>
-    <string name="voice_err_code">Speech recognizer error: %1$s (%2$d)</string>
+    <string name="voice_err_code">Voice service is busy. Try again or use the buttons.</string>
+    <string name="btn_speech_disabled_lang_pack">Offline language pack missing — use buttons below</string>
+    <string name="btn_speech_disabled_unavailable">Offline speech recognition unavailable — use buttons below</string>
+    <string name="voice_sheet_title">Voice &amp; Quick Commands</string>
+    <string name="btn_open_voice">Ask Jaagrit</string>
     <string name="perm_audio_title">Microphone</string>
     <string name="perm_audio_desc">Allows hands-free voice questions like asking driving time or alertness.</string>
 

@@ -818,12 +818,10 @@ class MonitoringPipeline(
             errorReason == "BUSY" -> getLocalizedString(R.string.voice_err_busy)
             errorReason == "NO_SPEECH" -> getLocalizedString(R.string.voice_err_no_speech)
             errorReason.startsWith("CODE:") -> {
-                val parts = errorReason.split(":")
-                val code = parts.getOrNull(1)?.toIntOrNull() ?: 0
-                val name = parts.getOrNull(2) ?: "UNKNOWN"
-                getLocalizedString(R.string.voice_err_code, name, code)
+                // Requirement 5: Plain language in banner; raw codes kept in logs and debug panel only
+                getLocalizedString(R.string.voice_err_busy)
             }
-            else -> errorReason
+            else -> getLocalizedString(R.string.voice_err_busy)
         }
         deliverAnswer(answer)
     }

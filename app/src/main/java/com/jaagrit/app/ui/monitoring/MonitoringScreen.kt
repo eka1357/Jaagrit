@@ -76,6 +76,13 @@ import com.jaagrit.app.R
 import com.jaagrit.app.camera.MonitoringPipeline
 import com.jaagrit.app.engine.DriverState
 import com.jaagrit.app.sms.SmsNotifier
+import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import com.jaagrit.app.data.SettingsStore
+import com.jaagrit.app.speech.SpeechReadiness
+import com.jaagrit.app.speech.SpeechReadinessChecker
 import com.jaagrit.app.speech.DriverIntent
 import com.jaagrit.app.speech.RecognizerInput
 import com.jaagrit.app.speech.SpeechInput
@@ -234,6 +241,7 @@ fun MonitoringScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ActiveMonitoringContent(
     onEndDrive: () -> Unit,
@@ -252,6 +260,24 @@ private fun ActiveMonitoringContent(
     DisposableEffect(speechInput) {
         onDispose {
             speechInput.destroy()
+        }
+    }
+
+    val settingsStore = remember { SettingsStore(context) }
+    var speechReadiness by remember { mutableStateOf<SpeechReadiness?>(null) }
+    var showVoiceSheet by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        val appLanguage = settingsStore.getAppLanguage()
+        SpeechReadinessChecker.checkReadiness(context, appLanguage) { readiness ->
+            speechReadiness = readiness
+        }
+    }
+
+    // Dismiss bottom sheet immediately when alert occurs (mic isolation & safety path)
+    LaunchedEffect(uiState.isAlert) {
+        if (uiState.isAlert) {
+            showVoiceSheet = false
         }
     }
 
@@ -822,7 +848,7 @@ private fun ActiveMonitoringContent(
                 )
             }
         } else {
-            // Normal mode: Voice answer banner + Ask Jaagrit button + 4 fallback buttons + End Drive button
+            // Normal mode: Reserved voice answer banner + bottom bar (48dp mic button + End Drive button)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -830,155 +856,310 @@ private fun ActiveMonitoringContent(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // 4-second answer text banner (M8)
-                AnimatedVisibility(visible = uiState.voiceAnswerText != null) {
-                    uiState.voiceAnswerText?.let { answerText ->
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = answerText,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                // Reserved 44dp row for 4-second voice answer banner so Drive Time & Alert stats are NEVER covered or shifted
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                        .padding(horizontal = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = uiState.voiceAnswerText != null,
+                        enter = androidx.compose.animation.fadeIn(),
+                        exit = androidx.compose.animation.fadeOut()
+                    ) {
+                        uiState.voiceAnswerText?.let { answerText ->
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = answerText,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 2,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Bottom bar: 48dp mic button (opens bottom sheet) + End Drive button
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Small 48dp mic icon button (M8: hidden during alerts, opens sheet in normal mode)
+                    Surface(
+                        onClick = { showVoiceSheet = true },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (uiState.isListening) Color(0xFFC62828) else MaterialTheme.colorScheme.primaryContainer,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (uiState.isListening) Color(0xFFB71C1C) else MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                        ),
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_mic),
+                                contentDescription = stringResource(R.string.btn_open_voice),
+                                tint = if (uiState.isListening) Color.White else MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
                             )
                         }
                     }
-                }
 
-                // Push-to-Talk "Ask Jaagrit" Button (M8, VOI-3)
-                Button(
-                    onClick = {
-                        if (uiState.isListening) {
-                            pipeline.cancelPushToTalk(speechInput)
-                        } else {
-                            pipeline.startPushToTalk(speechInput, onNavigateToCalibration)
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (uiState.isListening) Color(0xFFC62828) else MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = if (uiState.isListening) Color.White else MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    // End Drive button
+                    Button(
+                        onClick = onEndDrive,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error
+                        ),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
                     ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_mic),
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp)
-                        )
                         Text(
-                            text = stringResource(if (uiState.isListening) R.string.listening_hint else R.string.btn_ask_jaagrit),
+                            text = stringResource(R.string.btn_end_drive),
                             fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onError
                         )
                     }
                 }
+            }
+        }
+    }
 
-                // Fallback Row of 4 Intent Buttons (each 48dp+ per M8 requirement)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = { pipeline.executeIntent(DriverIntent.DRIVE_TIME) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 48.dp),
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.btn_cmd_drive_time),
-                            fontSize = 11.sp,
-                            maxLines = 2,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 13.sp
-                        )
+    // Bottom sheet for Voice Commands & Fallback Quick Buttons
+    if (showVoiceSheet && !isAlert) {
+        ModalBottomSheet(
+            onDismissRequest = { showVoiceSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.surface,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            VoiceCommandsBottomSheetContent(
+                uiState = uiState,
+                speechReadiness = speechReadiness,
+                onPushToTalk = {
+                    if (uiState.isListening) {
+                        pipeline.cancelPushToTalk(speechInput)
+                    } else {
+                        pipeline.startPushToTalk(speechInput, onNavigateToCalibration)
                     }
+                },
+                onExecuteIntent = { intent ->
+                    pipeline.executeIntent(intent, onNavigateToCalibration)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 32.dp)
+            )
+        }
+    }
+}
 
-                    OutlinedButton(
-                        onClick = { pipeline.executeIntent(DriverIntent.ALERTNESS) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 48.dp),
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.btn_cmd_alertness),
-                            fontSize = 11.sp,
-                            maxLines = 2,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 13.sp
-                        )
-                    }
+@Composable
+private fun VoiceCommandsBottomSheetContent(
+    uiState: com.jaagrit.app.camera.MonitoringUiState,
+    speechReadiness: SpeechReadiness?,
+    onPushToTalk: () -> Unit,
+    onExecuteIntent: (DriverIntent) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isSpeechAvailable = speechReadiness == SpeechReadiness.READY
 
-                    OutlinedButton(
-                        onClick = { pipeline.executeIntent(DriverIntent.ALERT_COUNT) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 48.dp),
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.btn_cmd_alert_count),
-                            fontSize = 11.sp,
-                            maxLines = 2,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 13.sp
-                        )
-                    }
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Sheet Title
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.voice_sheet_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
 
-                    OutlinedButton(
-                        onClick = { pipeline.executeIntent(DriverIntent.LAST_ALERT) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 48.dp),
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.btn_cmd_last_alert),
-                            fontSize = 11.sp,
-                            maxLines = 2,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 13.sp
-                        )
-                    }
-                }
-
-                // End Drive button (large and reachable for remote control / Office Kit)
-                Button(
-                    onClick = onEndDrive,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    ),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
+        // Voice answer banner inside bottom sheet (if active)
+        AnimatedVisibility(visible = uiState.voiceAnswerText != null) {
+            uiState.voiceAnswerText?.let { answerText ->
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = stringResource(R.string.btn_end_drive),
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onError
+                        text = answerText,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
                     )
                 }
+            }
+        }
+
+        // Push-to-Talk "Ask Jaagrit" Button (or disabled with one-line reason)
+        Button(
+            onClick = onPushToTalk,
+            enabled = isSpeechAvailable,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 52.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (uiState.isListening) Color(0xFFC62828) else MaterialTheme.colorScheme.primaryContainer,
+                contentColor = if (uiState.isListening) Color.White else MaterialTheme.colorScheme.onPrimaryContainer,
+                disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                disabledContentColor = MaterialTheme.colorScheme.outline
+            )
+        ) {
+            if (isSpeechAvailable) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_mic),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = stringResource(if (uiState.isListening) R.string.listening_hint else R.string.btn_ask_jaagrit),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            } else {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_mic),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Column(horizontalAlignment = Alignment.Start) {
+                        Text(
+                            text = stringResource(R.string.btn_ask_jaagrit),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                        Text(
+                            text = when (speechReadiness) {
+                                SpeechReadiness.LANG_PACK_MISSING -> stringResource(R.string.btn_speech_disabled_lang_pack)
+                                SpeechReadiness.UNAVAILABLE -> stringResource(R.string.btn_speech_disabled_unavailable)
+                                else -> stringResource(R.string.btn_speech_disabled_unavailable)
+                            },
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                }
+            }
+        }
+
+        // 4 Fallback Intent Buttons (each >= 48dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            OutlinedButton(
+                onClick = { onExecuteIntent(DriverIntent.DRIVE_TIME) },
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 48.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.btn_cmd_drive_time),
+                    fontSize = 11.sp,
+                    maxLines = 2,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 13.sp
+                )
+            }
+
+            OutlinedButton(
+                onClick = { onExecuteIntent(DriverIntent.ALERTNESS) },
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 48.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.btn_cmd_alertness),
+                    fontSize = 11.sp,
+                    maxLines = 2,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 13.sp
+                )
+            }
+
+            OutlinedButton(
+                onClick = { onExecuteIntent(DriverIntent.ALERT_COUNT) },
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 48.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.btn_cmd_alert_count),
+                    fontSize = 11.sp,
+                    maxLines = 2,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 13.sp
+                )
+            }
+
+            OutlinedButton(
+                onClick = { onExecuteIntent(DriverIntent.LAST_ALERT) },
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 48.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.btn_cmd_last_alert),
+                    fontSize = 11.sp,
+                    maxLines = 2,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 13.sp
+                )
             }
         }
     }
