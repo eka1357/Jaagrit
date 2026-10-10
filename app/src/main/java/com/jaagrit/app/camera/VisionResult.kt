@@ -11,6 +11,7 @@ data class VisionResult(
     val inferenceTimeMs: Long = 0L,
     val fps: Float = 0f,
     val timestampMs: Long = 0L,
-    val faceFrame: FaceFrame = FaceFrame.EMPTY
+    val faceFrame: FaceFrame = FaceFrame.EMPTY,
+    val isLowLight: Boolean = false
 )
 
