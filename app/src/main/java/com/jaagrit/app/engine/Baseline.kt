@@ -20,14 +20,14 @@ data class Baseline(
     val earGap: Float get() = openEar - closedEar
 
     companion object {
-        /** Fallback default baseline if uncalibrated */
+        /** Fallback default baseline if uncalibrated (AUDIT-018: isotropic pixel-space) */
         val DEFAULT = Baseline(
-            openEar = 0.28f,
-            closedEar = 0.05f,
-            threshold = 0.165f, // 0.05 + 0.5 * (0.28 - 0.05)
-            mar = 0.05f,
-            blinkRate = 16.0f,
-            responseLatencyMs = 1500L,
+            openEar = Config.DEFAULT_BASELINE_OPEN_EAR,
+            closedEar = Config.DEFAULT_BASELINE_CLOSED_EAR,
+            threshold = Config.DEFAULT_BASELINE_THRESHOLD,
+            mar = Config.DEFAULT_BASELINE_MAR,
+            blinkRate = Config.DEFAULT_BASELINE_BLINK_RATE,
+            responseLatencyMs = Config.DEFAULT_RESPONSE_LATENCY_MS,
             calibratedAtMs = 0L,
             isValid = false
         )

@@ -33,6 +33,13 @@ Score starts at 100 and subtracts weighted penalties from five signals:
   - **31–50:** Fatigued (L2)
   - **0–30:** Critical (L3)
 - All weights and parameters live in `Config.kt`. Initial values are sensible defaults, tuned later from `docs/MEASUREMENTS.md`.
+- **AUDIT-013 Final Weights (Code & Spec aligned):**
+  - PERCLOS: max 40 points (`ALERTNESS_WEIGHT_PERCLOS = 30.0` at L2, `PERCLOS_MAX_PENALTY = 40.0`)
+  - Longest closure: max 35 points (`ALERTNESS_WEIGHT_CLOSURE = 35.0`)
+  - Blink rate: max 25 points (`ALERTNESS_WEIGHT_BLINK_RATE = 25.0`)
+  - Head droop: max 20 points (`ALERTNESS_WEIGHT_HEAD_DROOP = 20.0`)
+  - Drive time: max 15 points (`DRIVE_TIME_MAX_PENALTY = 15.0`)
+  - Combined theoretical penalty = 135 points (score clamped to [0, 100]).
 - Engine produces a deterministic `reasons: List<String>` from the contributing penalties (e.g. "PERCLOS high (14%)", "Blink rate +25% vs baseline", "Drive time > 4h").
 - Unit-tested with scripted frame sequences.
 

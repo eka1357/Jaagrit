@@ -76,6 +76,12 @@ data class Config(
     // Minimum acceptable difference between open and closed EAR
     val calibrationMinGap: Float = CALIBRATION_MIN_GAP,
 
+    // Default uncalibrated baseline (AUDIT-018: isotropic pixel space)
+    val defaultBaselineOpenEar: Float = DEFAULT_BASELINE_OPEN_EAR,
+    val defaultBaselineClosedEar: Float = DEFAULT_BASELINE_CLOSED_EAR,
+    val defaultBaselineThreshold: Float = DEFAULT_BASELINE_THRESHOLD,
+    val defaultBaselineMar: Float = DEFAULT_BASELINE_MAR,
+
     // False alert limit (LAD-6)
     val falseAlertLimitCount: Int = FALSE_ALERT_LIMIT_COUNT,
     val falseAlertLimitWindowMs: Long = FALSE_ALERT_LIMIT_WINDOW_MS,
@@ -103,7 +109,40 @@ data class Config(
     val alertnessBandAlertMin: Int = ALERTNESS_BAND_ALERT_MIN,
     val alertnessBandCautionMin: Int = ALERTNESS_BAND_CAUTION_MIN,
     val alertnessBandFatiguedMin: Int = ALERTNESS_BAND_FATIGUED_MIN,
-    val alertnessBandCriticalMax: Int = ALERTNESS_BAND_CRITICAL_MAX
+    val alertnessBandCriticalMax: Int = ALERTNESS_BAND_CRITICAL_MAX,
+
+    // Reason filtering threshold (AUDIT-013)
+    val reasonPenaltyThreshold: Double = REASON_PENALTY_THRESHOLD,
+
+    // Blink duration bounds for valid blinks (AUDIT-013)
+    val blinkDurationMinMs: Long = BLINK_DURATION_MIN_MS,
+    val blinkDurationMaxMs: Long = BLINK_DURATION_MAX_MS,
+
+    // PERCLOS penalty scoring constants (AUDIT-013)
+    val perclosRampPenalty: Double = PERCLOS_RAMP_PENALTY,
+    val perclosMaxPenalty: Double = PERCLOS_MAX_PENALTY,
+
+    // Minimum closure duration before accumulating closure penalty (AUDIT-013)
+    val closurePenaltyMinMs: Long = CLOSURE_PENALTY_MIN_MS,
+
+    // Blink rate calculation window & ramp thresholds (AUDIT-013)
+    val blinkRateMinWindowMinutes: Double = BLINK_RATE_MIN_WINDOW_MINUTES,
+    val blinkRateL1Penalty: Double = BLINK_RATE_L1_PENALTY,
+    val blinkRateMaxIncrease: Double = BLINK_RATE_MAX_INCREASE,
+    val blinkRateRampPenalty: Double = BLINK_RATE_RAMP_PENALTY,
+    val blinkRateMaxPenalty: Double = BLINK_RATE_MAX_PENALTY,
+
+    // Minimum sustained head droop before accumulating droop penalty (AUDIT-013)
+    val headDroopPenaltyMinMs: Long = HEAD_DROOP_PENALTY_MIN_MS,
+
+    // Baseline calculation constants (AUDIT-013)
+    val defaultBaselineBlinkRate: Float = DEFAULT_BASELINE_BLINK_RATE,
+    val minBlinkCalculationDurationMs: Long = MIN_BLINK_CALCULATION_DURATION_MS,
+    val blinkRateClampMin: Float = BLINK_RATE_CLAMP_MIN,
+    val blinkRateClampMax: Float = BLINK_RATE_CLAMP_MAX,
+
+    // Facial landmark geometric pitch scaling factor (AUDIT-013)
+    val headPitchGeometricScale: Float = HEAD_PITCH_GEOMETRIC_SCALE
 ) {
     // Dynamic timer properties derived from demoTimers and quickCalibration flags (D9)
     val l4AfterL3Ms: Long
@@ -167,6 +206,14 @@ data class Config(
         const val QUICK_CALIBRATION_CLOSED_MS = 2000L
         const val DEFAULT_RESPONSE_LATENCY_MS = 1500L
 
+        // Default baseline constants in isotropic pixel space (AUDIT-018)
+        // With isotropic pixel coordinates, typical open EAR is 0.30–0.36; closed EAR is 0.05–0.08.
+        // Midpoint threshold is 0.20 (0.08 + 0.5 * (0.32 - 0.08)).
+        const val DEFAULT_BASELINE_OPEN_EAR = 0.32f
+        const val DEFAULT_BASELINE_CLOSED_EAR = 0.08f
+        const val DEFAULT_BASELINE_THRESHOLD = 0.20f
+        const val DEFAULT_BASELINE_MAR = 0.05f
+
         // False alert limits
         const val FALSE_ALERT_LIMIT_COUNT = 3
         const val FALSE_ALERT_LIMIT_WINDOW_MS = 600000L // 10 minutes
@@ -180,18 +227,54 @@ data class Config(
         const val DRIVE_TIME_RAMP_END_HOURS = 6.0
         const val DRIVE_TIME_MAX_PENALTY = 15.0
 
+        // Milliseconds per hour conversion constant for continuous drive duration tracking
+        const val MS_PER_HOUR = 3_600_000.0
+
+        // Minimum signal penalty score required to include a factor in human-readable explanation strings
+        const val REASON_PENALTY_THRESHOLD = 5.0
+
+        // Involuntary & natural blink duration bounds: 80ms minimum (sensor jitter filter) to 500ms maximum
+        const val BLINK_DURATION_MIN_MS = 80L
+        const val BLINK_DURATION_MAX_MS = 500L
+
+        // PERCLOS penalty parameters: 30 pts at L2 (0.12), +10 pts ramp up to max 40 pts at 0.25 (D1)
+        const val PERCLOS_RAMP_PENALTY = 10.0
+        const val PERCLOS_MAX_PENALTY = 40.0
+
+        // Eye closures under 500ms are treated as natural blinks and carry zero sustained closure penalty
+        const val CLOSURE_PENALTY_MIN_MS = 500L
+
+        // Blink rate parameters: min 12s observation (0.2 min) before rate estimation, ramps to 25 pts max
+        const val BLINK_RATE_MIN_WINDOW_MINUTES = 0.2
+        const val BLINK_RATE_L1_PENALTY = 15.0
+        const val BLINK_RATE_MAX_INCREASE = 0.50
+        const val BLINK_RATE_RAMP_PENALTY = 10.0
+        const val BLINK_RATE_MAX_PENALTY = 25.0
+
+        // Forward head tilts under 500ms are transient and carry zero sustained droop penalty
+        const val HEAD_DROOP_PENALTY_MIN_MS = 500L
+
+        // Baseline blink rate estimation bounds: resting default 16 blinks/min, clamped to [5, 45] blinks/min
+        const val DEFAULT_BASELINE_BLINK_RATE = 16.0f
+        const val MIN_BLINK_CALCULATION_DURATION_MS = 1000L
+        const val BLINK_RATE_CLAMP_MIN = 5.0f
+        const val BLINK_RATE_CLAMP_MAX = 45.0f
+
+        // Empirical multiplier scaling facial landmark geometric depth ratio to degrees
+        const val HEAD_PITCH_GEOMETRIC_SCALE = 1.5f
+
         // Alertness score weights & EMA (ENG-2, DECISIONS D1)
         // Weight rationale:
-        // - PERCLOS (30.0): Gold-standard physiological fatigue metric; percentage of eye closure over 60s window.
-        // - Longest Closure (35.0): Near-microsleep approaching 2.5s is an acute hazard warranting heavy penalty.
-        // - Blink Rate (20.0): Elevated blink frequency (+20%..+50%) reflects compensatory effort against drowsiness.
-        // - Head Droop (15.0): Forward neck pitch nodding confirms muscular fatigue.
+        // - PERCLOS (30.0 at L2, up to 40.0 max): Gold-standard physiological fatigue metric; percentage of eye closure over 60s window.
+        // - Longest Closure (35.0 max): Near-microsleep approaching 2.5s is an acute hazard warranting heavy penalty.
+        // - Blink Rate (25.0 max): Elevated blink frequency (+20%..+50%) reflects compensatory effort against drowsiness.
+        // - Head Droop (20.0 max): Forward neck pitch nodding confirms muscular fatigue.
         // - Drive Time (15.0 max): Accumulating endurance fatigue ramp starting after 2h, capping at 6h.
         // - EMA Alpha (0.15): Filters out transient noise while tracking score trends with ~1s latency.
         const val ALERTNESS_WEIGHT_PERCLOS = 30.0
         const val ALERTNESS_WEIGHT_CLOSURE = 35.0
-        const val ALERTNESS_WEIGHT_BLINK_RATE = 20.0
-        const val ALERTNESS_WEIGHT_HEAD_DROOP = 15.0
+        const val ALERTNESS_WEIGHT_BLINK_RATE = 25.0
+        const val ALERTNESS_WEIGHT_HEAD_DROOP = 20.0
         const val ALERTNESS_EMA_ALPHA = 0.15
 
         // Alertness bands
