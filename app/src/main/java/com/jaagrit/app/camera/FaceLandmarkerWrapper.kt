@@ -102,6 +102,27 @@ class FaceLandmarkerWrapper(
             lastImageWidth = rotatedBitmap.width
             lastImageHeight = rotatedBitmap.height
 
+            try {
+                val w = rotatedBitmap.width
+                val h = rotatedBitmap.height
+                if (w > 10 && h > 10) {
+                    var totalLum = 0.0
+                    var samples = 0
+                    for (xStep in 2..8 step 2) {
+                        for (yStep in 2..8 step 2) {
+                            val pixel = rotatedBitmap.getPixel(w * xStep / 10, h * yStep / 10)
+                            val r = (pixel shr 16) and 0xFF
+                            val g = (pixel shr 8) and 0xFF
+                            val b = pixel and 0xFF
+                            totalLum += 0.299 * r + 0.587 * g + 0.114 * b
+                            samples++
+                        }
+                    }
+                    val avgLum = if (samples > 0) totalLum / samples else 100.0
+                    lastIsLowLight = avgLum < 28.0
+                }
+            } catch (ignored: Exception) {}
+
             val mpImage = BitmapImageBuilder(rotatedBitmap).build()
             val timestampMs = getNextMonotonicTimestamp()
             frameStartTimes[timestampMs] = SystemClock.elapsedRealtime()
@@ -117,6 +138,7 @@ class FaceLandmarkerWrapper(
     private var lastLoggedMs: Long = 0L
     @Volatile private var lastImageWidth: Int = 480
     @Volatile private var lastImageHeight: Int = 640
+    @Volatile private var lastIsLowLight: Boolean = false
 
     private fun processDetectionResult(result: FaceLandmarkerResult, timestampMs: Long) {
         val now = SystemClock.elapsedRealtime()
@@ -146,7 +168,8 @@ class FaceLandmarkerWrapper(
             inferenceTimeMs = inferenceTimeMs,
             fps = currentFps,
             timestampMs = now,
-            faceFrame = faceFrame
+            faceFrame = faceFrame,
+            isLowLight = lastIsLowLight
         )
 
         if (now - lastLoggedMs >= 1000L) {

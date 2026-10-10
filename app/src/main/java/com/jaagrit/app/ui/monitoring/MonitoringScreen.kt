@@ -467,6 +467,58 @@ private fun ActiveMonitoringContent(
                     modifier = Modifier.fillMaxSize()
                 )
 
+                // Low light warning badge (M11a)
+                if (uiState.isLowLight && !isAlert) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 6.dp)
+                            .background(Color(0xFFE65100).copy(alpha = 0.88f), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "Low Light / कम रोशनी",
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                // Camera Error fallback overlay (M11a)
+                if (uiState.cameraError != null) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0xFF2A1515))
+                            .padding(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_camera),
+                            contentDescription = null,
+                            tint = Color(0xFFEF5350),
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Camera Unavailable",
+                            color = Color(0xFFEF5350),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Button(
+                            onClick = { pipeline.retryCamera() },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(28.dp)
+                        ) {
+                            Text(text = "Retry", fontSize = 11.sp)
+                        }
+                    }
+                }
+
                 // Face status pill on preview
                 Box(
                     modifier = Modifier

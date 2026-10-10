@@ -86,7 +86,9 @@ data class MonitoringUiState(
     val recognitionLatencyMs: Long? = null,
     val companion: com.jaagrit.app.engine.CompanionStatus? = null,
     val phoneTemperatureC: Float = 0f,
-    val isThermalThrottling: Boolean = false
+    val isThermalThrottling: Boolean = false,
+    val isLowLight: Boolean = false,
+    val cameraError: String? = null
 ) {
     val isAlert: Boolean
         get() = level >= Level.L3 || isRedFlashActive
@@ -227,7 +229,14 @@ class MonitoringPipeline(
         }
 
         // 2. Start CameraX preview
-        cameraController.startCamera(lifecycleOwner, previewView)
+        cameraController.startCamera(
+            lifecycleOwner,
+            previewView,
+            onError = { err ->
+                Log.e(tag, "Camera error encountered: ${err.message}", err)
+                _uiState.update { it.copy(cameraError = err.message ?: "Camera initialization failed") }
+            }
+        )
 
         // 3. Sequential engine loop confined to engineDispatcher (AUDIT-003)
         scope.launch(engineDispatcher) {
@@ -514,7 +523,8 @@ class MonitoringPipeline(
                 quickCalibration = currentConfig.quickCalibration,
                 companion = output.companion,
                 phoneTemperatureC = thermal.temperatureCelsius,
-                isThermalThrottling = thermal.isThrottling
+                isThermalThrottling = thermal.isThrottling,
+                isLowLight = visionResult?.isLowLight ?: current.isLowLight
             )
         }
     }
@@ -874,5 +884,24 @@ class MonitoringPipeline(
     fun dismissCompanion() {
         Log.i(tag, "Driver dismissed companion")
         eventChannel.trySend(PipelineEvent.Voice(VoiceEvent.Dismiss))
+    }
+
+    /**
+     * Retry camera binding after failure (M11a camera error state).
+     */
+    fun retryCamera() {
+        val owner = boundLifecycleOwner
+        val pv = boundPreviewView
+        if (owner != null && pv != null) {
+            _uiState.update { it.copy(cameraError = null) }
+            cameraController.startCamera(
+                owner,
+                pv,
+                onError = { err ->
+                    Log.e(tag, "Camera retry error: ${err.message}", err)
+                    _uiState.update { it.copy(cameraError = err.message ?: "Camera initialization failed") }
+                }
+            )
+        }
     }
 }
