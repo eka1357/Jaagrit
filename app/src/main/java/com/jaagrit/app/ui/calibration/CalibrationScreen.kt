@@ -11,8 +11,6 @@ import android.view.WindowManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.view.PreviewView
-import androidx.core.content.ContextCompat
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -27,7 +25,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -35,7 +32,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -59,21 +55,27 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.jaagrit.app.R
 import com.jaagrit.app.camera.CameraController
 import com.jaagrit.app.camera.FaceLandmarkerWrapper
 import com.jaagrit.app.data.BaselineStore
+import com.jaagrit.app.data.SettingsStore
 import com.jaagrit.app.engine.Baseline
 import com.jaagrit.app.engine.BaselineCalculator
 import com.jaagrit.app.engine.Config
 import com.jaagrit.app.engine.FaceFrame
+import com.jaagrit.app.ui.components.JaagritBrandHeader
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 /** Calibration step phases */
 enum class CalibrationStep {
@@ -92,8 +94,7 @@ private val CalibBlueLight = Color(0xFF41C9E2)
 
 /**
  * Milestone M3: Calibration flow screens with dedicated Blue UI (CAL-1, CAL-4, D4).
- * Records open/closed eye medians, calculates personalized threshold, validates gap,
- * and persists the Baseline in DataStore.
+ * Single language at a time with clean typography and zero mixed text.
  */
 @Composable
 fun CalibrationScreen(
@@ -106,7 +107,7 @@ fun CalibrationScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val baselineStore = remember { BaselineStore(context) }
-    val settingsStore = remember { com.jaagrit.app.data.SettingsStore(context) }
+    val settingsStore = remember { SettingsStore(context) }
     val isQuickCalib by settingsStore.quickCalibrationFlow.collectAsState(initial = false)
     val activeConfig = remember(isQuickCalib, config) { config.copy(quickCalibration = isQuickCalib) }
 
@@ -119,7 +120,7 @@ fun CalibrationScreen(
         }
     }
 
-    // Camera permission check (AUDIT-007)
+    // Camera permission check
     var hasCameraPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -197,7 +198,6 @@ fun CalibrationScreen(
                     countdownSeconds = s
                     delay(1000L)
                 }
-                // Transition to optional yawn
                 currentStep = CalibrationStep.YAWN
             }
             CalibrationStep.YAWN -> {
@@ -219,7 +219,6 @@ fun CalibrationScreen(
             }
             CalibrationStep.MATH_QUESTION -> {
                 mathStartTimeMs = SystemClock.uptimeMillis()
-                // Auto advance after 8 seconds if no option clicked
                 delay(8000L)
                 if (currentStep == CalibrationStep.MATH_QUESTION) {
                     mathLatencyMs = Config.DEFAULT_RESPONSE_LATENCY_MS
@@ -265,17 +264,17 @@ fun CalibrationScreen(
                     modifier = Modifier.padding(top = 40.dp)
                 ) {
                     Text(
-                        text = "Camera Permission Needed",
+                        text = stringResource(R.string.calib_perm_needed_title),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Calibration requires the front camera to measure your eye openness and customize the drowsiness thresholds.",
+                        text = stringResource(R.string.calib_perm_needed_desc),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White.copy(alpha = 0.8f),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        textAlign = TextAlign.Center
                     )
                 }
 
@@ -291,7 +290,11 @@ fun CalibrationScreen(
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = CalibBlueAccent)
                     ) {
-                        Text(text = "Grant Camera Permission", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = stringResource(R.string.calib_btn_grant_perm),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                     OutlinedButton(
                         onClick = onCancel,
@@ -300,7 +303,11 @@ fun CalibrationScreen(
                             .height(54.dp),
                         shape = RoundedCornerShape(14.dp)
                     ) {
-                        Text(text = "Cancel", fontSize = 16.sp, color = Color.White)
+                        Text(
+                            text = stringResource(R.string.calib_btn_cancel),
+                            fontSize = 16.sp,
+                            color = Color.White
+                        )
                     }
                 }
             }
@@ -313,187 +320,182 @@ fun CalibrationScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-            // Header Bar
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "जागृत कैलिब्रेशन",
-                        fontSize = 15.sp,
-                        color = CalibBlueLight,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = "DRIVER CALIBRATION",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
-
-                TextButton(onClick = onCancel) {
-                    Text(
-                        text = "Cancel",
-                        color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 15.sp
-                    )
-                }
-            }
-
-            // Camera preview with face tracking pill
-            Box(
-                modifier = Modifier
-                    .size(width = 170.dp, height = 130.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .border(2.dp, CalibBlueLight.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
-                    .background(Color.Black),
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                AndroidView(
-                    factory = { ctx ->
-                        PreviewView(ctx).apply {
-                            scaleType = PreviewView.ScaleType.FILL_CENTER
-                            cameraController.startCamera(
-                                lifecycleOwner = lifecycleOwner,
-                                previewView = this,
-                                onCameraReady = { isCameraReady = true }
-                            )
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
-
-                // Face detected status pill
-                Surface(
-                    modifier = Modifier
-                        .padding(bottom = 6.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    color = if (visionResult.faceFound) Color(0xCC00C853) else Color(0xCCD50000)
+                // Header Bar: Brand + Cancel
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = if (visionResult.faceFound) "FACE DETECTED" else "NO FACE",
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                    )
-                }
-            }
+                    Column {
+                        JaagritBrandHeader(
+                            wordmarkSize = 20.sp,
+                            subSize = 12.sp,
+                            wordmarkColor = Color.White,
+                            subColor = CalibBlueLight,
+                            horizontalAlignment = Alignment.Start
+                        )
+                        Text(
+                            text = stringResource(R.string.calib_title),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = CalibBlueLight
+                        )
+                    }
 
-            // Main Active Step Display
-            when (currentStep) {
-                CalibrationStep.LOOK_NORMAL -> {
-                    StepCard(
-                        stepTitle = "STEP 1 OF 5",
-                        hindiPrompt = "सामान्य रूप से सामने देखें",
-                        englishPrompt = "Look normally at the road ahead",
-                        instruction = "Keep your eyes naturally open in normal driving posture. Blinks are natural and counted.",
-                        countdown = countdownSeconds,
-                        maxSeconds = (activeConfig.calibrationOpenMs / 1000L).toInt()
-                    )
-                }
-                CalibrationStep.CLOSE_EYES -> {
-                    StepCard(
-                        stepTitle = "STEP 2 OF 5",
-                        hindiPrompt = "अपनी आँखें बंद करें",
-                        englishPrompt = "Close your eyes completely",
-                        instruction = "Keep your eyes gently closed until the timer ends to record your closed-eye baseline.",
-                        countdown = countdownSeconds,
-                        maxSeconds = (activeConfig.calibrationClosedMs / 1000L).toInt(),
-                        accentColor = Color(0xFFFFB74D)
-                    )
-                }
-                CalibrationStep.YAWN -> {
-                    StepCardWithSkip(
-                        stepTitle = "STEP 3 OF 5 (OPTIONAL)",
-                        hindiPrompt = "एक बार जम्हाई लें (मुँह खोलें)",
-                        englishPrompt = "Yawn once (open mouth wide)",
-                        instruction = "Helps calibrate your natural yawning mouth opening.",
-                        countdown = countdownSeconds,
-                        maxSeconds = (config.calibrationYawnMs / 1000L).toInt(),
-                        onSkip = { currentStep = CalibrationStep.LOOK_AROUND }
-                    )
-                }
-                CalibrationStep.LOOK_AROUND -> {
-                    StepCardWithSkip(
-                        stepTitle = "STEP 4 OF 5 (OPTIONAL)",
-                        hindiPrompt = "बाएँ, दाएँ और नीचे देखें",
-                        englishPrompt = "Check your mirrors & dashboard",
-                        instruction = "Look left, right, and down to establish your natural head movement range.",
-                        countdown = countdownSeconds,
-                        maxSeconds = (config.calibrationHeadPoseMs / 1000L).toInt(),
-                        onSkip = { currentStep = CalibrationStep.MATH_QUESTION }
-                    )
-                }
-                CalibrationStep.MATH_QUESTION -> {
-                    MathQuestionCard(
-                        question = "50 + 50 = ?",
-                        options = listOf(90, 100, 110),
-                        correctAnswer = 100,
-                        onOptionSelected = { selected ->
-                            mathLatencyMs = SystemClock.uptimeMillis() - mathStartTimeMs
-                            finishCalibration(
-                                openFrames, openPhaseStartMs,
-                                closedFrames, closedPhaseStartMs,
-                                yawnFrames, yawnPhaseStartMs,
-                                mathLatencyMs, config
-                            ) { result ->
-                                computedBaseline = result
-                                currentStep = CalibrationStep.RESULT
-                            }
-                        },
-                        onSkip = {
-                            mathLatencyMs = Config.DEFAULT_RESPONSE_LATENCY_MS
-                            finishCalibration(
-                                openFrames, openPhaseStartMs,
-                                closedFrames, closedPhaseStartMs,
-                                yawnFrames, yawnPhaseStartMs,
-                                mathLatencyMs, config
-                            ) { result ->
-                                computedBaseline = result
-                                currentStep = CalibrationStep.RESULT
-                            }
-                        }
-                    )
-                }
-                CalibrationStep.RESULT -> {
-                    computedBaseline?.let { baseline ->
-                        ResultCard(
-                            baseline = baseline,
-                            onSaveAndProceed = {
-                                scope.launch {
-                                    isSaving = true
-                                    baselineStore.saveBaseline(baseline)
-                                    isSaving = false
-                                    onCalibrationFinished()
-                                }
-                            },
-                            onRetry = {
-                                openFrames.clear()
-                                closedFrames.clear()
-                                yawnFrames.clear()
-                                mathLatencyMs = 0L
-                                currentStep = CalibrationStep.LOOK_NORMAL
-                            },
-                            isSaving = isSaving
+                    TextButton(onClick = onCancel) {
+                        Text(
+                            text = stringResource(R.string.calib_btn_cancel),
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 15.sp
                         )
                     }
                 }
-            }
 
-            // Bottom note
-            Text(
-                text = "Medians are used across all metrics • No frames or audio are stored",
-                color = Color.White.copy(alpha = 0.5f),
-                fontSize = 11.sp,
-                textAlign = TextAlign.Center
-            )
+                // Camera preview with face tracking pill
+                Box(
+                    modifier = Modifier
+                        .size(width = 170.dp, height = 130.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .border(2.dp, CalibBlueLight.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                        .background(Color.Black),
+                    contentAlignment = Alignment.BottomCenter
+                ) {
+                    AndroidView(
+                        factory = { ctx ->
+                            PreviewView(ctx).apply {
+                                scaleType = PreviewView.ScaleType.FILL_CENTER
+                                cameraController.startCamera(
+                                    lifecycleOwner = lifecycleOwner,
+                                    previewView = this,
+                                    onCameraReady = { isCameraReady = true }
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // Face detected status pill
+                    Surface(
+                        modifier = Modifier.padding(bottom = 6.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (visionResult.faceFound) Color(0xCC00C853) else Color(0xCCD50000)
+                    ) {
+                        Text(
+                            text = stringResource(if (visionResult.faceFound) R.string.calib_face_detected else R.string.no_face),
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                // Main Active Step Display (Single language at a time)
+                when (currentStep) {
+                    CalibrationStep.LOOK_NORMAL -> {
+                        StepCard(
+                            stepTitle = stringResource(R.string.calib_step_1_title),
+                            prompt = stringResource(R.string.calib_step_1_prompt),
+                            instruction = stringResource(R.string.calib_step_1_desc),
+                            countdown = countdownSeconds,
+                            maxSeconds = (activeConfig.calibrationOpenMs / 1000L).toInt()
+                        )
+                    }
+                    CalibrationStep.CLOSE_EYES -> {
+                        StepCard(
+                            stepTitle = stringResource(R.string.calib_step_2_title),
+                            prompt = stringResource(R.string.calib_step_2_prompt),
+                            instruction = stringResource(R.string.calib_step_2_desc),
+                            countdown = countdownSeconds,
+                            maxSeconds = (activeConfig.calibrationClosedMs / 1000L).toInt(),
+                            accentColor = Color(0xFFFFB74D)
+                        )
+                    }
+                    CalibrationStep.YAWN -> {
+                        StepCardWithSkip(
+                            stepTitle = stringResource(R.string.calib_step_3_title),
+                            prompt = stringResource(R.string.calib_step_3_prompt),
+                            instruction = stringResource(R.string.calib_step_3_desc),
+                            countdown = countdownSeconds,
+                            maxSeconds = (config.calibrationYawnMs / 1000L).toInt(),
+                            onSkip = { currentStep = CalibrationStep.LOOK_AROUND }
+                        )
+                    }
+                    CalibrationStep.LOOK_AROUND -> {
+                        StepCardWithSkip(
+                            stepTitle = stringResource(R.string.calib_step_4_title),
+                            prompt = stringResource(R.string.calib_step_4_prompt),
+                            instruction = stringResource(R.string.calib_step_4_desc),
+                            countdown = countdownSeconds,
+                            maxSeconds = (config.calibrationHeadPoseMs / 1000L).toInt(),
+                            onSkip = { currentStep = CalibrationStep.MATH_QUESTION }
+                        )
+                    }
+                    CalibrationStep.MATH_QUESTION -> {
+                        MathQuestionCard(
+                            question = "50 + 50 = ?",
+                            options = listOf(90, 100, 110),
+                            onOptionSelected = {
+                                mathLatencyMs = SystemClock.uptimeMillis() - mathStartTimeMs
+                                finishCalibration(
+                                    openFrames, openPhaseStartMs,
+                                    closedFrames, closedPhaseStartMs,
+                                    yawnFrames, yawnPhaseStartMs,
+                                    mathLatencyMs, config
+                                ) { result ->
+                                    computedBaseline = result
+                                    currentStep = CalibrationStep.RESULT
+                                }
+                            },
+                            onSkip = {
+                                mathLatencyMs = Config.DEFAULT_RESPONSE_LATENCY_MS
+                                finishCalibration(
+                                    openFrames, openPhaseStartMs,
+                                    closedFrames, closedPhaseStartMs,
+                                    yawnFrames, yawnPhaseStartMs,
+                                    mathLatencyMs, config
+                                ) { result ->
+                                    computedBaseline = result
+                                    currentStep = CalibrationStep.RESULT
+                                }
+                            }
+                        )
+                    }
+                    CalibrationStep.RESULT -> {
+                        computedBaseline?.let { baseline ->
+                            ResultCard(
+                                baseline = baseline,
+                                onSaveAndProceed = {
+                                    scope.launch {
+                                        isSaving = true
+                                        baselineStore.saveBaseline(baseline)
+                                        isSaving = false
+                                        onCalibrationFinished()
+                                    }
+                                },
+                                onRetry = {
+                                    openFrames.clear()
+                                    closedFrames.clear()
+                                    yawnFrames.clear()
+                                    mathLatencyMs = 0L
+                                    currentStep = CalibrationStep.LOOK_NORMAL
+                                },
+                                isSaving = isSaving
+                            )
+                        }
+                    }
+                }
+
+                // Bottom privacy note
+                Text(
+                    text = stringResource(R.string.calib_footer_privacy),
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 11.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
-}
 }
 
 private fun finishCalibration(
@@ -507,7 +509,7 @@ private fun finishCalibration(
     config: Config,
     onResult: (Baseline) -> Unit
 ) {
-    Log.i("JAAGRIT", "finishCalibration: openFrames=${openFrames.size}, closedFrames=${closedFrames.size}, openStart=$openStartMs, closedStart=$closedStartMs")
+    Log.i("JAAGRIT", "finishCalibration: openFrames=${openFrames.size}, closedFrames=${closedFrames.size}")
     val baseline = BaselineCalculator.computeFromFrames(
         openEyeFrames = openFrames,
         openPhaseStartMs = openStartMs,
@@ -519,15 +521,14 @@ private fun finishCalibration(
         calibratedAtMs = System.currentTimeMillis(),
         config = config
     )
-    Log.i("JAAGRIT", "finishCalibration result: open=${baseline.openEar}, closed=${baseline.closedEar}, thresh=${baseline.threshold}, gap=${baseline.earGap}, valid=${baseline.isValid}")
+    Log.i("JAAGRIT", "finishCalibration result: thresh=${baseline.threshold}, gap=${baseline.earGap}, valid=${baseline.isValid}")
     onResult(baseline)
 }
 
 @Composable
 private fun StepCard(
     stepTitle: String,
-    hindiPrompt: String,
-    englishPrompt: String,
+    prompt: String,
     instruction: String,
     countdown: Int,
     maxSeconds: Int,
@@ -551,23 +552,16 @@ private fun StepCard(
             )
 
             Text(
-                text = hindiPrompt,
-                fontSize = 24.sp,
+                text = prompt,
+                fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
                 textAlign = TextAlign.Center
             )
 
-            Text(
-                text = englishPrompt,
-                fontSize = 16.sp,
-                color = Color.White.copy(alpha = 0.85f),
-                textAlign = TextAlign.Center
-            )
+            Spacer(modifier = Modifier.height(4.dp))
 
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Large circular countdown
+            // Large circular countdown with Latin digits
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier.size(90.dp)
@@ -580,7 +574,7 @@ private fun StepCard(
                     trackColor = Color.White.copy(alpha = 0.15f)
                 )
                 Text(
-                    text = "${countdown}s",
+                    text = String.format(Locale.US, "%ds", countdown),
                     fontSize = 26.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
@@ -590,7 +584,7 @@ private fun StepCard(
             Text(
                 text = instruction,
                 fontSize = 13.sp,
-                color = Color.White.copy(alpha = 0.65f),
+                color = Color.White.copy(alpha = 0.75f),
                 textAlign = TextAlign.Center
             )
         }
@@ -600,8 +594,7 @@ private fun StepCard(
 @Composable
 private fun StepCardWithSkip(
     stepTitle: String,
-    hindiPrompt: String,
-    englishPrompt: String,
+    prompt: String,
     instruction: String,
     countdown: Int,
     maxSeconds: Int,
@@ -625,17 +618,10 @@ private fun StepCardWithSkip(
             )
 
             Text(
-                text = hindiPrompt,
+                text = prompt,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
-                textAlign = TextAlign.Center
-            )
-
-            Text(
-                text = englishPrompt,
-                fontSize = 15.sp,
-                color = Color.White.copy(alpha = 0.85f),
                 textAlign = TextAlign.Center
             )
 
@@ -651,7 +637,7 @@ private fun StepCardWithSkip(
                     trackColor = Color.White.copy(alpha = 0.15f)
                 )
                 Text(
-                    text = "${countdown}s",
+                    text = String.format(Locale.US, "%ds", countdown),
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
@@ -661,7 +647,7 @@ private fun StepCardWithSkip(
             Text(
                 text = instruction,
                 fontSize = 12.sp,
-                color = Color.White.copy(alpha = 0.65f),
+                color = Color.White.copy(alpha = 0.75f),
                 textAlign = TextAlign.Center
             )
 
@@ -669,7 +655,10 @@ private fun StepCardWithSkip(
                 onClick = onSkip,
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text(text = "Skip Step", color = Color.White)
+                Text(
+                    text = stringResource(R.string.calib_btn_skip),
+                    color = Color.White
+                )
             }
         }
     }
@@ -679,7 +668,6 @@ private fun StepCardWithSkip(
 private fun MathQuestionCard(
     question: String,
     options: List<Int>,
-    correctAnswer: Int,
     onOptionSelected: (Int) -> Unit,
     onSkip: () -> Unit
 ) {
@@ -694,21 +682,21 @@ private fun MathQuestionCard(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
-                text = "STEP 5 OF 5 — REACTION TEST",
+                text = stringResource(R.string.calib_step_5_title),
                 color = CalibBlueLight,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold
             )
 
             Text(
-                text = "तुरंत सही उत्तर चुनें",
+                text = stringResource(R.string.calib_step_5_prompt),
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
             )
 
             Text(
-                text = "Quick check: Tap the answer to measure baseline reaction latency",
+                text = stringResource(R.string.calib_step_5_desc),
                 fontSize = 13.sp,
                 color = Color.White.copy(alpha = 0.8f),
                 textAlign = TextAlign.Center
@@ -717,7 +705,7 @@ private fun MathQuestionCard(
             Text(
                 text = question,
                 fontSize = 32.sp,
-                fontWeight = FontWeight.ExtraBold,
+                fontWeight = FontWeight.Bold,
                 color = CalibBlueLight
             )
 
@@ -735,7 +723,7 @@ private fun MathQuestionCard(
                             .height(52.dp)
                     ) {
                         Text(
-                            text = "$opt",
+                            text = String.format(Locale.US, "%d", opt),
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -745,7 +733,10 @@ private fun MathQuestionCard(
             }
 
             TextButton(onClick = onSkip) {
-                Text(text = "Skip Reaction Test", color = Color.White.copy(alpha = 0.6f))
+                Text(
+                    text = stringResource(R.string.calib_btn_skip_test),
+                    color = Color.White.copy(alpha = 0.6f)
+                )
             }
         }
     }
@@ -774,18 +765,18 @@ private fun ResultCard(
         ) {
             if (baseline.isValid) {
                 Text(
-                    text = "कैलिब्रेशन सफल!",
+                    text = stringResource(R.string.calib_result_success_title),
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF00E676)
                 )
                 Text(
-                    text = "Calibration Complete",
-                    fontSize = 15.sp,
+                    text = stringResource(R.string.calib_result_success_sub),
+                    fontSize = 14.sp,
                     color = Color.White.copy(alpha = 0.8f)
                 )
 
-                // Metrics summary table
+                // Metrics summary table (always Latin digits)
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -793,17 +784,32 @@ private fun ResultCard(
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    MetricRow(label = "Open Eye EAR (median)", value = "%.3f".format(baseline.openEar))
-                    MetricRow(label = "Closed Eye EAR (median)", value = "%.3f".format(baseline.closedEar))
                     MetricRow(
-                        label = "Personal Threshold",
-                        value = "%.3f".format(baseline.threshold),
+                        label = stringResource(R.string.calib_metric_open_ear),
+                        value = String.format(Locale.US, "%.3f", baseline.openEar)
+                    )
+                    MetricRow(
+                        label = stringResource(R.string.calib_metric_closed_ear),
+                        value = String.format(Locale.US, "%.3f", baseline.closedEar)
+                    )
+                    MetricRow(
+                        label = stringResource(R.string.calib_metric_threshold),
+                        value = String.format(Locale.US, "%.3f", baseline.threshold),
                         isHighlight = true
                     )
-                    MetricRow(label = "Separation Gap", value = "%.3f".format(baseline.earGap))
-                    MetricRow(label = "Baseline Blink Rate", value = "%.1f / min".format(baseline.blinkRate))
+                    MetricRow(
+                        label = stringResource(R.string.calib_metric_gap),
+                        value = String.format(Locale.US, "%.3f", baseline.earGap)
+                    )
+                    MetricRow(
+                        label = stringResource(R.string.calib_metric_blink_rate),
+                        value = String.format(Locale.US, "%.1f / min", baseline.blinkRate)
+                    )
                     if (baseline.responseLatencyMs > 0) {
-                        MetricRow(label = "Reaction Latency", value = "${baseline.responseLatencyMs} ms")
+                        MetricRow(
+                            label = stringResource(R.string.calib_metric_reaction),
+                            value = "${baseline.responseLatencyMs} ms"
+                        )
                     }
                 }
 
@@ -817,22 +823,24 @@ private fun ResultCard(
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C853))
                 ) {
                     Text(
-                        text = if (isSaving) "Saving..." else "Save & Start Drive",
+                        text = stringResource(if (isSaving) R.string.calib_btn_saving else R.string.calib_btn_save),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                 }
             } else {
-                // Warning if gap < 0.05
                 Text(
-                    text = "कैलिब्रेशन ठीक से नहीं हुआ",
+                    text = stringResource(R.string.calib_result_fail_title),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFFFF5252)
                 )
                 Text(
-                    text = "Eye Separation Gap Too Small (${"%.3f".format(baseline.earGap)} < 0.05)",
+                    text = stringResource(
+                        R.string.calib_result_fail_sub,
+                        String.format(Locale.US, "%.3f", baseline.earGap)
+                    ),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color(0xFFFF8A80),
@@ -840,7 +848,7 @@ private fun ResultCard(
                 )
 
                 Text(
-                    text = "Open EAR (${"%.3f".format(baseline.openEar)}) and closed EAR (${"%.3f".format(baseline.closedEar)}) are too close. Ensure proper lighting, face angle, or check if sunglasses are on.",
+                    text = stringResource(R.string.calib_result_fail_desc),
                     fontSize = 12.sp,
                     color = Color.White.copy(alpha = 0.8f),
                     textAlign = TextAlign.Center
@@ -855,7 +863,7 @@ private fun ResultCard(
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD50000))
                 ) {
                     Text(
-                        text = "Retry Calibration",
+                        text = stringResource(R.string.calib_btn_retry),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White

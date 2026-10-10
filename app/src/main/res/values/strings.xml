@@ -1,3 +1,162 @@
 <resources>
     <string name="app_name">Jaagrit</string>
+    <string name="brand_wordmark">JAAGRIT</string>
+    <string name="brand_devanagari">जागृत</string>
+
+    <!-- State words & banner -->
+    <string name="state_normal">Alert</string>
+    <string name="state_caution">Caution</string>
+    <string name="state_fatigued">Fatigued</string>
+    <string name="state_critical">Critical</string>
+    <string name="state_face_lost">Face lost</string>
+    <string name="state_calibrating">Calibrating</string>
+
+    <!-- Critical Alert Mode -->
+    <string name="critical_banner_title">JAAGRIT • CRITICAL ALERT</string>
+    <string name="critical_headline">WAKE UP!</string>
+    <string name="critical_instruction">Slow down and open your eyes!</string>
+    <string name="btn_im_awake">I\'M AWAKE</string>
+    <string name="im_awake_hint">Tap button to stop alarm and cancel SMS</string>
+
+    <!-- Home Screen -->
+    <string name="home_subtitle">Offline Driver Alertness Assistant</string>
+    <string name="badge_offline">ON-DEVICE • OFFLINE</string>
+    <string name="profile_calibrated">Profile Calibrated (Threshold: %s)</string>
+    <string name="profile_default">Default Profile (Uncalibrated)</string>
+    <string name="checklist_title">Drive Readiness Checklist</string>
+    <string name="checklist_camera">Camera</string>
+    <string name="checklist_sms">Emergency SMS</string>
+    <string name="checklist_location">Location (GPS)</string>
+    <string name="checklist_contact">Emergency Contact</string>
+    <string name="status_ready">ready</string>
+    <string name="status_permission_needed">permission needed</string>
+    <string name="status_no_sim">no SIM card</string>
+    <string name="status_airplane_mode">airplane mode on</string>
+    <string name="status_contact_not_set">not set in Settings</string>
+    <string name="notice_sms_cellular">Emergency SMS requires cellular mobile signal — airplane mode blocks delivery</string>
+    <string name="notice_offline_guarantee">100% on-device &amp; offline • Cellular SMS radio only</string>
+    <string name="btn_start_drive">Start Drive</string>
+    <string name="btn_calibrate">Calibrate Profile</string>
+    <string name="btn_recalibrate">Recalibrate Profile</string>
+    <string name="btn_trip_history">Trip History &amp; Logs</string>
+
+    <!-- Uncalibrated Dialog -->
+    <string name="dialog_uncalibrated_title">Calibrate Driver Profile?</string>
+    <string name="dialog_uncalibrated_body">Calibrating takes about 15 seconds and tailors eye and blink thresholds to your face, reducing false alerts.</string>
+    <string name="dialog_btn_calibrate_now">Calibrate Now</string>
+    <string name="dialog_btn_start_defaults">Start with Defaults</string>
+
+    <!-- Monitoring Screen -->
+    <string name="monitoring_title">Driving Alertness Monitor</string>
+    <string name="telemetry_active_hint">Telemetry Active (long-press title to close)</string>
+    <string name="face_visible">FACE VISIBLE</string>
+    <string name="no_face">NO FACE</string>
+    <string name="stat_drive_time">Drive Time</string>
+    <string name="stat_alerts">Alerts</string>
+    <string name="btn_end_drive">End Drive</string>
+    <string name="recalib_suggested_title">Recalibration Suggested</string>
+    <string name="recalib_suggested_body">%d alerts dismissed in 10 minutes. Calibrating again can adapt to changing light or posture.</string>
+
+    <!-- Pre-Drive Permissions -->
+    <string name="predrive_perm_title">Pre-Drive Permissions</string>
+    <string name="predrive_perm_desc">Jaagrit requires permissions to protect you on the road. All processing is 100% offline on your device.</string>
+    <string name="perm_camera_title">Front Camera</string>
+    <string name="perm_camera_desc">Watches eye closure and head posture in memory to estimate alertness.</string>
+    <string name="perm_sms_title">Emergency SMS</string>
+    <string name="perm_sms_desc">Sends an emergency SMS to your contact if you become unresponsive at Level 5.</string>
+    <string name="perm_location_title">Location (GPS)</string>
+    <string name="perm_location_desc">Includes your approximate GPS coordinates in the emergency SMS for help.</string>
+    <string name="perm_status_granted">Granted</string>
+    <string name="perm_status_required">Required</string>
+    <string name="perm_status_not_granted">Not granted</string>
+    <string name="btn_grant_permissions">Grant Permissions</string>
+    <string name="btn_start_anyway">Start Drive Anyway</string>
+    <string name="btn_back_home">Back to Home</string>
+
+    <!-- Calibration Screen -->
+    <string name="calib_title">DRIVER CALIBRATION</string>
+    <string name="calib_perm_needed_title">Camera Permission Needed</string>
+    <string name="calib_perm_needed_desc">Calibration requires the front camera to measure your eye openness and customize the drowsiness thresholds.</string>
+    <string name="calib_btn_grant_perm">Grant Camera Permission</string>
+    <string name="calib_btn_cancel">Cancel</string>
+    <string name="calib_face_detected">FACE DETECTED</string>
+    <string name="calib_step_1_title">STEP 1 OF 5</string>
+    <string name="calib_step_1_prompt">Look normally at the road ahead</string>
+    <string name="calib_step_1_desc">Keep your eyes naturally open in normal driving posture. Blinks are natural and counted.</string>
+    <string name="calib_step_2_title">STEP 2 OF 5</string>
+    <string name="calib_step_2_prompt">Close your eyes completely</string>
+    <string name="calib_step_2_desc">Keep your eyes gently closed until the timer ends to record your closed-eye baseline.</string>
+    <string name="calib_step_3_title">STEP 3 OF 5 (OPTIONAL)</string>
+    <string name="calib_step_3_prompt">Yawn once (open mouth wide)</string>
+    <string name="calib_step_3_desc">Helps calibrate your natural yawning mouth opening.</string>
+    <string name="calib_step_4_title">STEP 4 OF 5 (OPTIONAL)</string>
+    <string name="calib_step_4_prompt">Check your mirrors &amp; dashboard</string>
+    <string name="calib_step_4_desc">Look left, right, and down to establish your natural head movement range.</string>
+    <string name="calib_step_5_title">STEP 5 OF 5 — REACTION TEST</string>
+    <string name="calib_step_5_prompt">Tap the correct answer quickly</string>
+    <string name="calib_step_5_desc">Quick check: Tap the answer to measure baseline reaction latency.</string>
+    <string name="calib_btn_skip">Skip Step</string>
+    <string name="calib_btn_skip_test">Skip Reaction Test</string>
+    <string name="calib_result_success_title">Calibration Complete!</string>
+    <string name="calib_result_success_sub">Your personalized eye profile is ready.</string>
+    <string name="calib_metric_open_ear">Open Eye EAR (median)</string>
+    <string name="calib_metric_closed_ear">Closed Eye EAR (median)</string>
+    <string name="calib_metric_threshold">Personal Threshold</string>
+    <string name="calib_metric_gap">Separation Gap</string>
+    <string name="calib_metric_blink_rate">Baseline Blink Rate</string>
+    <string name="calib_metric_reaction">Reaction Latency</string>
+    <string name="calib_btn_save">Save &amp; Start Drive</string>
+    <string name="calib_btn_saving">Saving...</string>
+    <string name="calib_result_fail_title">Calibration Incomplete</string>
+    <string name="calib_result_fail_sub">Eye Separation Gap Too Small (%s &lt; 0.05)</string>
+    <string name="calib_result_fail_desc">Ensure proper lighting and face angle, and remove dark sunglasses if wearing them.</string>
+    <string name="calib_btn_retry">Retry Calibration</string>
+    <string name="calib_footer_privacy">Medians are used across all metrics • No frames or audio are stored</string>
+
+    <!-- History Screen -->
+    <string name="history_title">Trip History</string>
+    <string name="history_subtitle">On-device Room Database</string>
+    <string name="history_overview">Drive Telemetry Overview</string>
+    <string name="history_total_drives">Total Drives</string>
+    <string name="history_avg_alertness">Avg Alertness</string>
+    <string name="history_total_alerts">Total Alerts</string>
+    <string name="history_sessions_header">Driving Sessions (%d)</string>
+    <string name="history_duration">Duration</string>
+    <string name="history_active_drive">Active Drive</string>
+    <string name="history_crit_label">crit</string>
+    <string name="history_events_logged">%d logged events</string>
+    <string name="history_events_none">0 logged events</string>
+    <string name="history_hide_details">Hide details</string>
+    <string name="history_tap_details">Tap for events</string>
+    <string name="history_no_events">No alert events recorded during this session.</string>
+    <string name="history_empty_title">No Driving Sessions Yet</string>
+    <string name="history_empty_desc">Start a drive to automatically record alertness telemetry and safety interventions offline.</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_desc">App interface and voice guidance language</string>
+    <string name="settings_lang_hindi">हिंदी</string>
+    <string name="settings_lang_english">English</string>
+    <string name="settings_profile_title">Driver Baseline Profile</string>
+    <string name="settings_badge_calibrated">CALIBRATED</string>
+    <string name="settings_badge_uncalibrated">UNCALIBRATED</string>
+    <string name="settings_last_calibrated">Last calibrated: %s</string>
+    <string name="settings_default">Default</string>
+    <string name="settings_uncalibrated_desc">No personalized calibration saved. The app is using universal default thresholds. Calibrate your face for maximum precision and to adapt to your glasses.</string>
+    <string name="settings_btn_recalibrate">Recalibrate Face Profile</string>
+    <string name="settings_btn_start_calib">Start Calibration</string>
+    <string name="settings_btn_reset">Reset to Default Baseline</string>
+    <string name="settings_contact_title">Emergency Contact (Level 5 Alert)</string>
+    <string name="settings_contact_desc">If you become unresponsive during driving (after alarm and family voice), Jaagrit sends an emergency SMS with your last known GPS coordinates to this phone number.</string>
+    <string name="settings_driver_name_label">Driver Name</string>
+    <string name="settings_phone_label">Emergency Phone Number</string>
+    <string name="settings_masked_label">Active Masked Number:</string>
+    <string name="settings_btn_save_contact">Save Emergency Contact</string>
+    <string name="settings_contact_saved">Emergency contact saved locally.</string>
+    <string name="settings_demo_flags">Demo &amp; Testing Flags</string>
+    <string name="settings_demo_timers_desc">Shortens escalation: family voice in 5s (vs 10s), SMS in 8s (vs 20s).</string>
+    <string name="settings_quick_calib_desc">Fast demo calibration: open eyes 5s, closed eyes 2s.</string>
+    <string name="settings_privacy_title">Privacy Guarantee</string>
+    <string name="settings_privacy_bullets">• 100% Offline: The app contains no INTERNET permission.\n• Zero Media Retention: Camera frames and mic audio are never saved to storage.\n• Numerical Telemetry Only: Only mathematical metrics (EAR, pitch, timestamps) are computed in memory.\n• Local Persistence: Driver baseline is saved securely in local Android DataStore.</string>
 </resources>

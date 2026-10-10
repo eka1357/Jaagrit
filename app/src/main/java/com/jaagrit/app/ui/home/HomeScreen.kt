@@ -1,6 +1,7 @@
 package com.jaagrit.app.ui.home
 
-import androidx.compose.foundation.background
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,11 +12,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -23,36 +28,39 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.jaagrit.app.data.BaselineStore
-
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.jaagrit.app.R
+import com.jaagrit.app.data.BaselineStore
 import com.jaagrit.app.data.SettingsStore
 import com.jaagrit.app.sms.SmsAvailability
 import com.jaagrit.app.sms.SmsNotifier
+import com.jaagrit.app.ui.components.JaagritBrandHeader
+import com.jaagrit.app.ui.components.LanguageSwitch
+import java.util.Locale
 
 @Composable
 fun HomeScreen(
+    currentLanguage: String,
+    onLanguageChange: (String) -> Unit,
     onStartDrive: () -> Unit,
     onNavigateToCalibration: () -> Unit,
     onNavigateToSettings: () -> Unit,
@@ -92,17 +100,17 @@ fun HomeScreen(
     }
 
     if (showUncalibratedDialog) {
-        androidx.compose.material3.AlertDialog(
+        AlertDialog(
             onDismissRequest = { showUncalibratedDialog = false },
             title = {
                 Text(
-                    text = "Calibrate Driver Profile?",
+                    text = stringResource(R.string.dialog_uncalibrated_title),
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Text(
-                    text = "No calibrated driver profile found. Calibrating takes only ~15 seconds and tailors eye closure and blink thresholds to your face, reducing false alerts.",
+                    text = stringResource(R.string.dialog_uncalibrated_body),
                     fontSize = 14.sp
                 )
             },
@@ -113,7 +121,7 @@ fun HomeScreen(
                         onNavigateToCalibration()
                     }
                 ) {
-                    Text("Calibrate Now (Recommended)")
+                    Text(stringResource(R.string.dialog_btn_calibrate_now))
                 }
             },
             dismissButton = {
@@ -123,7 +131,7 @@ fun HomeScreen(
                         onStartDrive()
                     }
                 ) {
-                    Text("Start with Defaults")
+                    Text(stringResource(R.string.dialog_btn_start_defaults))
                 }
             }
         )
@@ -136,16 +144,16 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(24.dp)
+                .padding(20.dp)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Header Section with History and Settings buttons
+            // Header Section: History, Brand, Language Toggle, Settings
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 16.dp),
+                    .padding(top = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Row(
@@ -158,50 +166,58 @@ fun HomeScreen(
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.padding(4.dp)
+                            modifier = Modifier.padding(2.dp)
                         ) {
-                            Text(
-                                text = "📜",
-                                fontSize = 20.sp,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            Icon(
+                                painter = painterResource(R.drawable.ic_history),
+                                contentDescription = stringResource(R.string.history_title),
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .padding(8.dp)
+                                    .size(22.dp)
                             )
                         }
                     }
 
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "जागृत",
-                            fontSize = 44.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = "Jaagrit",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    // Brand: JAAGRIT with जागृत as a small separate text below
+                    JaagritBrandHeader(
+                        wordmarkSize = 36.sp,
+                        subSize = 16.sp
+                    )
 
-                    // Settings Icon
-                    IconButton(onClick = onNavigateToSettings) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.padding(4.dp)
-                        ) {
-                            Text(
-                                text = "⚙",
-                                fontSize = 22.sp,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        // Language switch toggle
+                        LanguageSwitch(
+                            currentLanguage = currentLanguage,
+                            onLanguageSelected = onLanguageChange
+                        )
+
+                        // Settings Icon
+                        IconButton(onClick = onNavigateToSettings) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                modifier = Modifier.padding(2.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_settings),
+                                    contentDescription = stringResource(R.string.settings_title),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .padding(8.dp)
+                                        .size(22.dp)
+                                )
+                            }
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "Offline Driver Alertness Assistant",
+                    text = stringResource(R.string.home_subtitle),
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.outline,
                     textAlign = TextAlign.Center
@@ -225,12 +241,17 @@ fun HomeScreen(
                             modifier = Modifier.size(8.dp)
                         ) {}
 
+                        val chipText = if (baseline?.isValid == true) {
+                            stringResource(
+                                R.string.profile_calibrated,
+                                String.format(Locale.US, "%.3f", baseline!!.threshold)
+                            )
+                        } else {
+                            stringResource(R.string.profile_default)
+                        }
+
                         Text(
-                            text = if (baseline?.isValid == true) {
-                                "Profile Calibrated (Threshold: ${"%.3f".format(baseline!!.threshold)})"
-                            } else {
-                                "Uncalibrated • Default Profile"
-                            },
+                            text = chipText,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = if (baseline?.isValid == true) Color(0xFF1B5E20) else Color(0xFFBF360C)
@@ -239,22 +260,22 @@ fun HomeScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Drive Readiness Checklist Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                 )
             ) {
                 Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        text = "Drive Readiness Checklist",
+                        text = stringResource(R.string.checklist_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -265,32 +286,63 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_camera),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.checklist_camera),
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         Text(
-                            text = "Camera",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = if (hasCamera) "ready" else "permission needed",
+                            text = stringResource(if (hasCamera) R.string.status_ready else R.string.status_permission_needed),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = if (hasCamera) Color(0xFF2E7D32) else Color(0xFFE65100)
                         )
                     }
 
-                    // Line 2: Emergency SMS (Prompt requirement 3: ready / no SIM / no permission / airplane mode)
+                    // Line 2: Emergency SMS
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_sms),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.checklist_sms),
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        val smsStatusText = when (smsAvailability) {
+                            SmsAvailability.READY -> stringResource(R.string.status_ready)
+                            SmsAvailability.NO_SIM -> stringResource(R.string.status_no_sim)
+                            SmsAvailability.NO_PERMISSION -> stringResource(R.string.status_permission_needed)
+                            SmsAvailability.AIRPLANE_MODE -> stringResource(R.string.status_airplane_mode)
+                            SmsAvailability.NO_CONTACT -> stringResource(R.string.status_contact_not_set)
+                        }
+
                         Text(
-                            text = "Emergency SMS",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = smsAvailability.reason,
+                            text = smsStatusText,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = if (smsAvailability == SmsAvailability.READY) Color(0xFF2E7D32) else Color(0xFFE65100)
@@ -303,13 +355,24 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_location),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.checklist_location),
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         Text(
-                            text = "Location (GPS)",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = if (hasLocation) "ready" else "permission needed",
+                            text = stringResource(if (hasLocation) R.string.status_ready else R.string.status_permission_needed),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = if (hasLocation) Color(0xFF2E7D32) else Color(0xFFE65100)
@@ -322,13 +385,24 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_lock),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.checklist_contact),
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         Text(
-                            text = "Emergency Contact",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = if (emergencyContact.isNotBlank()) SettingsStore.maskPhoneNumber(emergencyContact) else "not set in Settings",
+                            text = if (emergencyContact.isNotBlank()) SettingsStore.maskPhoneNumber(emergencyContact) else stringResource(R.string.status_contact_not_set),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = if (emergencyContact.isNotBlank()) Color(0xFF2E7D32) else Color(0xFFE65100)
@@ -336,28 +410,56 @@ fun HomeScreen(
                     }
 
                     Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "⚠️ Emergency SMS requires cellular mobile signal — airplane mode blocks SMS delivery (D6)",
-                        fontSize = 11.sp,
-                        color = Color(0xFFC62828),
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = "🔒 100% on-device & offline • Cellular SMS radio only",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.outline
-                    )
+
+                    Row(
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_warning),
+                            contentDescription = null,
+                            tint = Color(0xFFC62828),
+                            modifier = Modifier
+                                .size(14.dp)
+                                .padding(top = 2.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.notice_sms_cellular),
+                            fontSize = 11.sp,
+                            color = Color(0xFFC62828),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_lock),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier
+                                .size(14.dp)
+                                .padding(top = 2.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.notice_offline_guarantee),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Action Buttons
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                    .padding(bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Primary Start Drive Button (Checks calibration first)
@@ -371,14 +473,14 @@ fun HomeScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(58.dp),
+                        .height(56.dp),
                     shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
                     )
                 ) {
                     Text(
-                        text = "Start Drive",
+                        text = stringResource(R.string.btn_start_drive),
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -389,11 +491,11 @@ fun HomeScreen(
                     onClick = onNavigateToCalibration,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(50.dp),
+                        .height(48.dp),
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     Text(
-                        text = if (baseline?.isValid == true) "Recalibrate Profile" else "Calibrate Profile",
+                        text = stringResource(if (baseline?.isValid == true) R.string.btn_recalibrate else R.string.btn_calibrate),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -404,14 +506,25 @@ fun HomeScreen(
                     onClick = onNavigateToHistory,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(50.dp),
+                        .height(48.dp),
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Text(
-                        text = "📜 Trip History & Logs",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_history),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.btn_trip_history),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
             }
         }

@@ -1,0 +1,162 @@
+<resources>
+    <string name="app_name">Jaagrit</string>
+    <string name="brand_wordmark">JAAGRIT</string>
+    <string name="brand_devanagari">जागृत</string>
+
+    <!-- State words & banner -->
+    <string name="state_normal">अलर्ट</string>
+    <string name="state_caution">सावधान</string>
+    <string name="state_fatigued">थकान</string>
+    <string name="state_critical">गंभीर</string>
+    <string name="state_face_lost">चेहरा नहीं दिख रहा</string>
+    <string name="state_calibrating">कैलिब्रेशन</string>
+
+    <!-- Critical Alert Mode -->
+    <string name="critical_banner_title">जागृत • गंभीर चेतावनी</string>
+    <string name="critical_headline">जागो!</string>
+    <string name="critical_instruction">गाड़ी धीरे करो और आँखें खोलो!</string>
+    <string name="btn_im_awake">मैं जाग रहा हूँ</string>
+    <string name="im_awake_hint">अलार्म बंद करने और एसएमएस रोकने के लिए दबाएँ</string>
+
+    <!-- Home Screen -->
+    <string name="home_subtitle">ऑफ़लाइन ड्राइवर सतर्कता सहायक</string>
+    <string name="badge_offline">ऑन-डिवाइस • ऑफ़लाइन</string>
+    <string name="profile_calibrated">प्रोफ़ाइल कैलिब्रेटेड (सीमा: %s)</string>
+    <string name="profile_default">डिफ़ॉल्ट प्रोफ़ाइल</string>
+    <string name="checklist_title">ड्राइव तैयारी चेकलिस्ट</string>
+    <string name="checklist_camera">कैमरा</string>
+    <string name="checklist_sms">आपातकालीन एसएमएस</string>
+    <string name="checklist_location">लोकेशन (जीपीएस)</string>
+    <string name="checklist_contact">आपातकालीन संपर्क</string>
+    <string name="status_ready">तैयार</string>
+    <string name="status_permission_needed">अनुमति चाहिए</string>
+    <string name="status_no_sim">सिम कार्ड नहीं है</string>
+    <string name="status_airplane_mode">हवाई मोड चालू है</string>
+    <string name="status_contact_not_set">सेटिंग्स में सेट नहीं है</string>
+    <string name="notice_sms_cellular">आपातकालीन एसएमएस के लिए मोबाइल सिग्नल ज़रूरी है — हवाई मोड में एसएमएस नहीं जाएगा</string>
+    <string name="notice_offline_guarantee">100% ऑन-डिवाइस और ऑफ़लाइन • केवल मोबाइल नेटवर्क</string>
+    <string name="btn_start_drive">ड्राइव शुरू करें</string>
+    <string name="btn_calibrate">प्रोफ़ाइल कैलिब्रेट करें</string>
+    <string name="btn_recalibrate">दोबारा कैलिब्रेट करें</string>
+    <string name="btn_trip_history">यात्रा इतिहास और लॉग</string>
+
+    <!-- Uncalibrated Dialog -->
+    <string name="dialog_uncalibrated_title">ड्राइवर प्रोफ़ाइल कैलिब्रेट करें?</string>
+    <string name="dialog_uncalibrated_body">कैलिब्रेशन में केवल 15 सेकंड लगते हैं। यह आपकी आँखों और पलकों के अनुसार अलर्ट सेट करता है, जिससे गलत अलार्म कम होते हैं।</string>
+    <string name="dialog_btn_calibrate_now">अभी कैलिब्रेट करें</string>
+    <string name="dialog_btn_start_defaults">डिफ़ॉल्ट के साथ शुरू करें</string>
+
+    <!-- Monitoring Screen -->
+    <string name="monitoring_title">ड्राइविंग सतर्कता मॉनिटर</string>
+    <string name="telemetry_active_hint">टेलीमेट्री सक्रिय (बंद करने के लिए शीर्षक दबाए रखें)</string>
+    <string name="face_visible">चेहरा दिख रहा है</string>
+    <string name="no_face">चेहरा नहीं दिख रहा</string>
+    <string name="stat_drive_time">ड्राइव का समय</string>
+    <string name="stat_alerts">अलर्ट</string>
+    <string name="btn_end_drive">ड्राइव समाप्त करें</string>
+    <string name="recalib_suggested_title">दोबारा कैलिब्रेशन का सुझाव</string>
+    <string name="recalib_suggested_body">10 मिनट में %d अलर्ट खारिज किए गए। दोबारा कैलिब्रेट करने से रोशनी और बैठने के तरीके के अनुसार सटीकता बढ़ती है।</string>
+
+    <!-- Pre-Drive Permissions -->
+    <string name="predrive_perm_title">ड्राइव से पहले अनुमतियाँ</string>
+    <string name="predrive_perm_desc">सड़क पर सुरक्षा के लिए जागृत को अनुमतियों की आवश्यकता है। सारा डेटा केवल आपके फ़ोन पर ऑफ़लाइन प्रोसेस होता है।</string>
+    <string name="perm_camera_title">सामने का कैमरा</string>
+    <string name="perm_camera_desc">सतर्कता मापने के लिए आँखों और सिर की स्थिति पर नज़र रखता है।</string>
+    <string name="perm_sms_title">आपातकालीन एसएमएस</string>
+    <string name="perm_sms_desc">यदि आप आपात स्थिति में जवाब नहीं देते हैं तो आपके संपर्क को एसएमएस भेजता है।</string>
+    <string name="perm_location_title">लोकेशन (जीपीएस)</string>
+    <string name="perm_location_desc">मदद के लिए आपातकालीन एसएमएस में आपके जीपीएस निर्देशांक शामिल करता है।</string>
+    <string name="perm_status_granted">स्वीकृत</string>
+    <string name="perm_status_required">आवश्यक</string>
+    <string name="perm_status_not_granted">अनुमति नहीं मिली</string>
+    <string name="btn_grant_permissions">अनुमतियाँ दें</string>
+    <string name="btn_start_anyway">फिर भी ड्राइव शुरू करें</string>
+    <string name="btn_back_home">होम पर वापस जाएँ</string>
+
+    <!-- Calibration Screen -->
+    <string name="calib_title">ड्राइवर कैलिब्रेशन</string>
+    <string name="calib_perm_needed_title">कैमरा अनुमति आवश्यक है</string>
+    <string name="calib_perm_needed_desc">आँखों के खुलने की माप लेने और थकान की सीमा तय करने के लिए सामने के कैमरे की आवश्यकता है।</string>
+    <string name="calib_btn_grant_perm">कैमरा अनुमति दें</string>
+    <string name="calib_btn_cancel">रद्द करें</string>
+    <string name="calib_face_detected">चेहरा मिला</string>
+    <string name="calib_step_1_title">चरण 1 / 5</string>
+    <string name="calib_step_1_prompt">सामान्य रूप से सामने देखें</string>
+    <string name="calib_step_1_desc">सामान्य ड्राइविंग मुद्रा में आँखें स्वाभाविक रूप से खुली रखें। पलक झपकाना स्वाभाविक है।</string>
+    <string name="calib_step_2_title">चरण 2 / 5</string>
+    <string name="calib_step_2_prompt">अपनी आँखें बंद करें</string>
+    <string name="calib_step_2_desc">टाइमर खत्म होने तक आँखें बंद रखें ताकि बंद आँखों की माप ली जा सके।</string>
+    <string name="calib_step_3_title">चरण 3 / 5 (वैकल्पिक)</string>
+    <string name="calib_step_3_prompt">एक बार जम्हाई लें (मुँह पूरा खोलें)</string>
+    <string name="calib_step_3_desc">जम्हाई लेते समय मुँह के खुलने की स्वाभाविक माप दर्ज करता है।</string>
+    <string name="calib_step_4_title">चरण 4 / 5 (वैकल्पिक)</string>
+    <string name="calib_step_4_prompt">आईने और डैशबोर्ड की ओर देखें</string>
+    <string name="calib_step_4_desc">दाएँ, बाएँ और नीचे देखें ताकि सिर के हिलने-डुलने का स्वाभाविक दायरा दर्ज हो सके।</string>
+    <string name="calib_step_5_title">चरण 5 / 5 — प्रतिक्रिया परीक्षण</string>
+    <string name="calib_step_5_prompt">तुरंत सही उत्तर चुनें</string>
+    <string name="calib_step_5_desc">प्रतिक्रिया समय मापने के लिए उत्तर चुनें।</string>
+    <string name="calib_btn_skip">आगे बढ़ें</string>
+    <string name="calib_btn_skip_test">परीक्षण छोड़ें</string>
+    <string name="calib_result_success_title">कैलिब्रेशन सफल!</string>
+    <string name="calib_result_success_sub">आपकी व्यक्तिगत प्रोफ़ाइल तैयार है।</string>
+    <string name="calib_metric_open_ear">खुली आँख EAR (औसत)</string>
+    <string name="calib_metric_closed_ear">बंद आँख EAR (औसत)</string>
+    <string name="calib_metric_threshold">व्यक्तिगत सीमा</string>
+    <string name="calib_metric_gap">अंतर</string>
+    <string name="calib_metric_blink_rate">सामान्य पलक दर</string>
+    <string name="calib_metric_reaction">प्रतिक्रिया समय</string>
+    <string name="calib_btn_save">सेव करें और ड्राइव शुरू करें</string>
+    <string name="calib_btn_saving">सेव हो रहा है...</string>
+    <string name="calib_result_fail_title">कैलिब्रेशन ठीक से नहीं हुआ</string>
+    <string name="calib_result_fail_sub">आँखों के खुलने और बंद होने का अंतर बहुत कम है (%s &lt; 0.05)</string>
+    <string name="calib_result_fail_desc">उचित रोशनी और चेहरे का कोण सुनिश्चित करें, या धूप का चश्मा हटाएँ।</string>
+    <string name="calib_btn_retry">दोबारा कैलिब्रेट करें</string>
+    <string name="calib_footer_privacy">सभी आँकड़ों में मध्यिका का उपयोग • कोई फोटो या आवाज़ स्टोर नहीं होती</string>
+
+    <!-- History Screen -->
+    <string name="history_title">यात्रा इतिहास</string>
+    <string name="history_subtitle">ऑन-डिवाइस डेटाबेस</string>
+    <string name="history_overview">ड्राइव सारांश</string>
+    <string name="history_total_drives">कुल यात्राएं</string>
+    <string name="history_avg_alertness">औसत सतर्कता</string>
+    <string name="history_total_alerts">कुल अलर्ट</string>
+    <string name="history_sessions_header">ड्राइविंग सत्र (%d)</string>
+    <string name="history_duration">अवधि</string>
+    <string name="history_active_drive">सक्रिय ड्राइव</string>
+    <string name="history_crit_label">गंभीर</string>
+    <string name="history_events_logged">%d दर्ज घटनाएँ</string>
+    <string name="history_events_none">0 दर्ज घटनाएँ</string>
+    <string name="history_hide_details">विवरण छिपाएँ</string>
+    <string name="history_tap_details">विवरण देखें</string>
+    <string name="history_no_events">इस सत्र में कोई अलर्ट दर्ज नहीं हुआ।</string>
+    <string name="history_empty_title">अभी कोई यात्रा दर्ज नहीं है</string>
+    <string name="history_empty_desc">ऑफ़लाइन सतर्कता और सुरक्षा अलर्ट दर्ज करने के लिए ड्राइव शुरू करें।</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_title">सेटिंग्स</string>
+    <string name="settings_language">भाषा</string>
+    <string name="settings_language_desc">ऐप इंटरफ़ेस और आवाज़ की भाषा</string>
+    <string name="settings_lang_hindi">हिंदी</string>
+    <string name="settings_lang_english">English</string>
+    <string name="settings_profile_title">ड्राइवर बेसलाइन प्रोफ़ाइल</string>
+    <string name="settings_badge_calibrated">कैलिब्रेटेड</string>
+    <string name="settings_badge_uncalibrated">डिफ़ॉल्ट</string>
+    <string name="settings_last_calibrated">अंतिम कैलिब्रेशन: %s</string>
+    <string name="settings_default">डिफ़ॉल्ट</string>
+    <string name="settings_uncalibrated_desc">कोई व्यक्तिगत कैलिब्रेशन सेव नहीं है। ऐप डिफ़ॉल्ट सीमाओं का उपयोग कर रहा है। अधिक सटीकता के लिए अपने चेहरे को कैलिब्रेट करें।</string>
+    <string name="settings_btn_recalibrate">दोबारा कैलिब्रेट करें</string>
+    <string name="settings_btn_start_calib">कैलिब्रेशन शुरू करें</string>
+    <string name="settings_btn_reset">डिफ़ॉल्ट बेसलाइन पर रीसेट करें</string>
+    <string name="settings_contact_title">आपातकालीन संपर्क (स्तर 5 अलर्ट)</string>
+    <string name="settings_contact_desc">यदि आप गाड़ी चलाते समय जवाब नहीं देते हैं, तो जागृत आपके जीपीएस लोकेशन के साथ इस नंबर पर आपातकालीन एसएमएस भेजता है।</string>
+    <string name="settings_driver_name_label">ड्राइवर का नाम</string>
+    <string name="settings_phone_label">आपातकालीन फ़ोन नंबर</string>
+    <string name="settings_masked_label">सक्रिय नंबर:</string>
+    <string name="settings_btn_save_contact">आपातकालीन संपर्क सेव करें</string>
+    <string name="settings_contact_saved">आपातकालीन संपर्क सफलतापूर्वक सेव हो गया।</string>
+    <string name="settings_demo_flags">डेमो और परीक्षण फ़्लैग</string>
+    <string name="settings_demo_timers_desc">त्वरित अलर्ट: 5 सेकंड में परिवार की आवाज़, 8 सेकंड में एसएमएस।</string>
+    <string name="settings_quick_calib_desc">त्वरित कैलिब्रेशन: खुली आँखें 5 सेकंड, बंद आँखें 2 सेकंड।</string>
+    <string name="settings_privacy_title">गोपनीयता की गारंटी</string>
+    <string name="settings_privacy_bullets">• 100% ऑफ़लाइन: ऐप में इंटरनेट की कोई अनुमति नहीं है।\n• कोई मीडिया स्टोरेज नहीं: कैमरा और आवाज़ कभी भी स्टोरेज में सेव नहीं होते।\n• केवल गणितीय आँकड़े: केवल सांख्यिकीय माप (EAR, कोण, समय) मेमोरी में प्रोसेस होते हैं।\n• सुरक्षित लोकल स्टोरेज: सभी डेटा केवल आपके फ़ोन के डेटास्टोर में सुरक्षित रहता है।</string>
+</resources>
