@@ -66,4 +66,18 @@ class AlarmVolumeTest {
         generator.release()
         assertEquals(5, fakeVm.currentVol)
     }
+
+    @Test
+    fun testStartAlarmAfterReleaseIsNoOp() {
+        val fakeVm = FakeVolumeManager(currentVol = 4, maxVol = 15)
+        val generator = AlarmToneGenerator(context = null, volumeManager = fakeVm, audioTrackFactory = { null })
+
+        generator.release()
+        org.junit.Assert.assertTrue(generator.isReleasedState)
+
+        // Calling startAlarm after release must be a no-op (AUDIT-016)
+        generator.startAlarm()
+        assertEquals(4, fakeVm.currentVol)
+        assertEquals(0, fakeVm.volumeHistory.size)
+    }
 }
