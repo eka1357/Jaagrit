@@ -15,6 +15,48 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 
 /**
+ * Standard Android SpeechRecognizer error codes and name mappings.
+ */
+object SpeechErrorCodes {
+    const val ERROR_NETWORK_TIMEOUT = 1
+    const val ERROR_NETWORK = 2
+    const val ERROR_AUDIO = 3
+    const val ERROR_SERVER = 4
+    const val ERROR_CLIENT = 5
+    const val ERROR_SPEECH_TIMEOUT = 6
+    const val ERROR_NO_MATCH = 7
+    const val ERROR_RECOGNIZER_BUSY = 8
+    const val ERROR_INSUFFICIENT_PERMISSIONS = 9
+    const val ERROR_TOO_MANY_REQUESTS = 10
+    const val ERROR_SERVER_DISCONNECTED = 11
+    const val ERROR_LANGUAGE_NOT_SUPPORTED = 12
+    const val ERROR_LANGUAGE_UNAVAILABLE = 13
+    const val ERROR_CANNOT_CHECK_SUPPORT = 14
+    const val ERROR_CANNOT_LISTEN_TO_DOWNLOAD = 15
+
+    fun codeToName(code: Int): String {
+        return when (code) {
+            ERROR_NETWORK_TIMEOUT -> "ERROR_NETWORK_TIMEOUT"
+            ERROR_NETWORK -> "ERROR_NETWORK"
+            ERROR_AUDIO -> "ERROR_AUDIO"
+            ERROR_SERVER -> "ERROR_SERVER"
+            ERROR_CLIENT -> "ERROR_CLIENT"
+            ERROR_SPEECH_TIMEOUT -> "ERROR_SPEECH_TIMEOUT"
+            ERROR_NO_MATCH -> "ERROR_NO_MATCH"
+            ERROR_RECOGNIZER_BUSY -> "ERROR_RECOGNIZER_BUSY"
+            ERROR_INSUFFICIENT_PERMISSIONS -> "ERROR_INSUFFICIENT_PERMISSIONS"
+            ERROR_TOO_MANY_REQUESTS -> "ERROR_TOO_MANY_REQUESTS"
+            ERROR_SERVER_DISCONNECTED -> "ERROR_SERVER_DISCONNECTED"
+            ERROR_LANGUAGE_NOT_SUPPORTED -> "ERROR_LANGUAGE_NOT_SUPPORTED"
+            ERROR_LANGUAGE_UNAVAILABLE -> "ERROR_LANGUAGE_UNAVAILABLE"
+            ERROR_CANNOT_CHECK_SUPPORT -> "ERROR_CANNOT_CHECK_SUPPORT"
+            ERROR_CANNOT_LISTEN_TO_DOWNLOAD -> "ERROR_CANNOT_LISTEN_TO_DOWNLOAD"
+            else -> "UNKNOWN_ERROR_$code"
+        }
+    }
+}
+
+/**
  * Android [SpeechRecognizer] implementation of [SpeechInput] (M8, VOI-3).
  * Prefers on-device speech recognition via [SpeechRecognizer.createOnDeviceSpeechRecognizer].
  * Enforces a 6-second timeout and clean resource disposal.
@@ -46,19 +88,39 @@ class RecognizerInput(
         onResult: (String) -> Unit,
         onError: (String) -> Unit
     ) {
+        startListeningInternal(languageCode, onResult, onError, retried = false)
+    }
+
+    private fun startListeningInternal(
+        languageCode: String,
+        onResult: (String) -> Unit,
+        onError: (String) -> Unit,
+        retried: Boolean
+    ) {
         mainHandler.post {
             try {
                 cancelInternal()
 
-                if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                    Log.w(tag, "SpeechRecognizer: RECORD_AUDIO permission not granted")
-                    onError("RECORD_AUDIO permission not granted")
+                val isAvail = isAvailable()
+                val isOnDevice = isOnDeviceAvailable()
+                val permState = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+                // Log SpeechRecognizer state per requirements
+                Log.i(tag, "SpeechRecognizer.isRecognitionAvailable=$isAvail, isOnDeviceRecognitionAvailable=$isOnDevice, permissionGranted=$permState, targetLanguage=$languageCode, retried=$retried")
+
+                if (!permState) {
+                    Log.w(tag, "SpeechRecognizer: RECORD_AUDIO permission missing")
+                    onError("PERM_MISSING")
                     return@post
                 }
 
-                val recognizer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                    SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
-                ) {
+                if (!isAvail) {
+                    Log.w(tag, "SpeechRecognizer: Speech recognition service unavailable on device")
+                    onError("NO_ON_DEVICE_RECOGNIZER")
+                    return@post
+                }
+
+                val recognizer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && isOnDevice) {
                     Log.i(tag, "SpeechRecognizer: Using on-device speech recognizer")
                     SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
                 } else {
@@ -98,9 +160,32 @@ class RecognizerInput(
                     override fun onError(error: Int) {
                         clearTimeout()
                         isListening = false
-                        val errorMsg = mapErrorCode(error)
-                        Log.w(tag, "SpeechRecognizer error: $error ($errorMsg)")
-                        onError(errorMsg)
+                        val codeName = SpeechErrorCodes.codeToName(error)
+                        Log.w(tag, "SpeechRecognizer onError: code=$error ($codeName)")
+
+                        // If English dialect (e.g. en-IN) failed with language unavailable, retry once with en-US
+                        if ((error == SpeechErrorCodes.ERROR_LANGUAGE_UNAVAILABLE || error == SpeechErrorCodes.ERROR_LANGUAGE_NOT_SUPPORTED) &&
+                            languageCode.startsWith("en", ignoreCase = true) &&
+                            !languageCode.equals("en-US", ignoreCase = true) &&
+                            !retried
+                        ) {
+                            Log.i(tag, "SpeechRecognizer: Language $languageCode unavailable, falling back to installed en-US")
+                            startListeningInternal("en-US", onResult, onError, retried = true)
+                            return
+                        }
+
+                        cancelInternal()
+
+                        val errorToken = when (error) {
+                            SpeechErrorCodes.ERROR_LANGUAGE_UNAVAILABLE,
+                            SpeechErrorCodes.ERROR_LANGUAGE_NOT_SUPPORTED -> "LANG_PACK_MISSING"
+                            SpeechErrorCodes.ERROR_INSUFFICIENT_PERMISSIONS -> "PERM_MISSING"
+                            SpeechErrorCodes.ERROR_RECOGNIZER_BUSY -> "BUSY"
+                            SpeechErrorCodes.ERROR_SPEECH_TIMEOUT,
+                            SpeechErrorCodes.ERROR_NO_MATCH -> "NO_SPEECH"
+                            else -> "CODE:$error:$codeName"
+                        }
+                        onError(errorToken)
                     }
 
                     override fun onResults(results: Bundle?) {
@@ -109,6 +194,7 @@ class RecognizerInput(
                         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         val spokenText = matches?.firstOrNull().orEmpty()
                         Log.i(tag, "SpeechRecognizer results: '$spokenText' (candidates: $matches)")
+                        cancelInternal()
                         onResult(spokenText)
                     }
 
@@ -125,15 +211,15 @@ class RecognizerInput(
                     if (isListening) {
                         Log.i(tag, "SpeechRecognizer: 6s listening timeout reached")
                         stopListening()
-                        onError("Timeout")
+                        onError("NO_SPEECH")
                     }
                 }
                 mainHandler.postDelayed(timeoutRunnable!!, 6000L)
 
             } catch (e: Exception) {
                 Log.e(tag, "Failed to start SpeechRecognizer", e)
-                isListening = false
-                onError(e.message ?: "Failed to start recognition")
+                cancelInternal()
+                onError("CODE:5:ERROR_CLIENT")
             }
         }
     }
@@ -180,20 +266,5 @@ class RecognizerInput(
     private fun clearTimeout() {
         timeoutRunnable?.let { mainHandler.removeCallbacks(it) }
         timeoutRunnable = null
-    }
-
-    private fun mapErrorCode(error: Int): String {
-        return when (error) {
-            SpeechRecognizer.ERROR_AUDIO -> "Audio recording error"
-            SpeechRecognizer.ERROR_CLIENT -> "Client side error"
-            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Insufficient permissions"
-            SpeechRecognizer.ERROR_NETWORK -> "Network error"
-            SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network timeout"
-            SpeechRecognizer.ERROR_NO_MATCH -> "No recognition match"
-            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Recognizer busy"
-            SpeechRecognizer.ERROR_SERVER -> "Server error"
-            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech input"
-            else -> "Speech recognition error code: $error"
-        }
     }
 }

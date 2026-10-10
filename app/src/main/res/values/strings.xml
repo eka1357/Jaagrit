@@ -198,7 +198,17 @@
     <string name="voice_ans_recalibrate">Okay, look at the camera.</string>
     <string name="voice_ans_say_again">Say again?</string>
     <string name="checklist_voice">Voice Commands</string>
+    <string name="readiness_speech_recognizer">Speech commands</string>
+    <string name="status_speech_unavailable">unavailable</string>
     <string name="status_offline_pack_missing">offline pack missing</string>
+    <string name="notice_speech_offline_missing">Offline speech recognition unavailable — use the quick-answer buttons on screen</string>
+    <string name="voice_err_mic_permission">Microphone permission missing</string>
+    <string name="voice_err_no_recognizer">On-device speech recognition unavailable</string>
+    <string name="voice_err_lang_pack_missing">Offline speech language pack missing</string>
+    <string name="voice_err_mic_blocked_alert">Microphone blocked during active alert</string>
+    <string name="voice_err_busy">Speech recognizer busy, tap again</string>
+    <string name="voice_err_no_speech">No speech detected</string>
+    <string name="voice_err_code">Speech recognizer error: %1$s (%2$d)</string>
     <string name="perm_audio_title">Microphone</string>
     <string name="perm_audio_desc">Allows hands-free voice questions like asking driving time or alertness.</string>
 

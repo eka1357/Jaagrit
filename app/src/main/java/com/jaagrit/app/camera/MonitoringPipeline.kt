@@ -745,17 +745,32 @@ class MonitoringPipeline(
     /**
      * Push-to-talk handler for the "Ask Jaagrit" button.
      * Enforces mic isolation during L3+ alerts (D17).
+     * Reports user-visible failure reasons when speech recognition cannot start or fails.
      */
     fun startPushToTalk(speechInput: SpeechInput, onNavigateToCalibration: (() -> Unit)? = null) {
         if (_uiState.value.isAlert || _uiState.value.level >= Level.L3) {
             Log.w(tag, "Microphone access blocked during active L3+ alert (D17)")
+            val reason = getLocalizedString(R.string.voice_err_mic_blocked_alert)
+            deliverAnswer(reason)
             return
         }
 
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+        val isRecAvailable = speechInput.isAvailable()
+        val isOnDevice = speechInput.isOnDeviceAvailable()
+        val permState = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        Log.i(tag, "SpeechRecognizer check: isRecognitionAvailable=$isRecAvailable, isOnDeviceRecognitionAvailable=$isOnDevice, permissionGranted=$permState")
+
+        if (!permState) {
             Log.w(tag, "Microphone access blocked: RECORD_AUDIO permission not granted")
-            val answer = getLocalizedString(R.string.status_permission_needed)
-            deliverAnswer(answer)
+            val reason = getLocalizedString(R.string.voice_err_mic_permission)
+            deliverAnswer(reason)
+            return
+        }
+
+        if (!isRecAvailable) {
+            Log.w(tag, "SpeechRecognizer unavailable on device")
+            val reason = getLocalizedString(R.string.voice_err_no_recognizer)
+            deliverAnswer(reason)
             return
         }
 
@@ -782,17 +797,35 @@ class MonitoringPipeline(
                 }
                 executeIntent(intent, onNavigateToCalibration)
             },
-            onError = { error ->
-                Log.w(tag, "Speech recognition error: $error")
+            onError = { errorReason ->
+                Log.w(tag, "Speech recognition failed: $errorReason")
                 _uiState.update {
                     it.copy(
                         isListening = false,
-                        lastRecognizedText = if (it.lastRecognizedText == null) "[Error: $error]" else it.lastRecognizedText
+                        lastRecognizedText = "[Error: $errorReason]"
                     )
                 }
-                executeIntent(DriverIntent.UNKNOWN, onNavigateToCalibration)
+                deliverFailureReason(errorReason)
             }
         )
+    }
+
+    private fun deliverFailureReason(errorReason: String) {
+        val answer = when {
+            errorReason == "PERM_MISSING" -> getLocalizedString(R.string.voice_err_mic_permission)
+            errorReason == "NO_ON_DEVICE_RECOGNIZER" -> getLocalizedString(R.string.voice_err_no_recognizer)
+            errorReason == "LANG_PACK_MISSING" -> getLocalizedString(R.string.voice_err_lang_pack_missing)
+            errorReason == "BUSY" -> getLocalizedString(R.string.voice_err_busy)
+            errorReason == "NO_SPEECH" -> getLocalizedString(R.string.voice_err_no_speech)
+            errorReason.startsWith("CODE:") -> {
+                val parts = errorReason.split(":")
+                val code = parts.getOrNull(1)?.toIntOrNull() ?: 0
+                val name = parts.getOrNull(2) ?: "UNKNOWN"
+                getLocalizedString(R.string.voice_err_code, name, code)
+            }
+            else -> errorReason
+        }
+        deliverAnswer(answer)
     }
 
     fun cancelPushToTalk(speechInput: SpeechInput) {
