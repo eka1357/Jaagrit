@@ -56,6 +56,7 @@ fun HomeScreen(
     onStartDrive: () -> Unit,
     onNavigateToCalibration: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToHistory: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -64,6 +65,8 @@ fun HomeScreen(
     val settingsStore = remember { SettingsStore(context) }
     val smsNotifier = remember { SmsNotifier(context, settingsStore) }
     val emergencyContact by settingsStore.emergencyContactFlow.collectAsState(initial = "")
+
+    var showUncalibratedDialog by remember { mutableStateOf(false) }
 
     var resumeTick by remember { mutableStateOf(0) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -88,6 +91,44 @@ fun HomeScreen(
         smsNotifier.checkAvailability()
     }
 
+    if (showUncalibratedDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showUncalibratedDialog = false },
+            title = {
+                Text(
+                    text = "Calibrate Driver Profile?",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "No calibrated driver profile found. Calibrating takes only ~15 seconds and tailors eye closure and blink thresholds to your face, reducing false alerts.",
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showUncalibratedDialog = false
+                        onNavigateToCalibration()
+                    }
+                ) {
+                    Text("Calibrate Now (Recommended)")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        showUncalibratedDialog = false
+                        onStartDrive()
+                    }
+                ) {
+                    Text("Start with Defaults")
+                }
+            }
+        )
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
@@ -100,7 +141,7 @@ fun HomeScreen(
             verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Header Section with Settings button
+            // Header Section with History and Settings buttons
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -112,7 +153,20 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Spacer(modifier = Modifier.width(48.dp))
+                    // History Icon
+                    IconButton(onClick = onNavigateToHistory) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.padding(4.dp)
+                        ) {
+                            Text(
+                                text = "📜",
+                                fontSize = 20.sp,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
@@ -283,6 +337,12 @@ fun HomeScreen(
 
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
+                        text = "⚠️ Emergency SMS requires cellular mobile signal — airplane mode blocks SMS delivery (D6)",
+                        fontSize = 11.sp,
+                        color = Color(0xFFC62828),
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
                         text = "🔒 100% on-device & offline • Cellular SMS radio only",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.outline
@@ -300,9 +360,15 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Primary Start Drive Button
+                // Primary Start Drive Button (Checks calibration first)
                 Button(
-                    onClick = onStartDrive,
+                    onClick = {
+                        if (baseline?.isValid == true) {
+                            onStartDrive()
+                        } else {
+                            showUncalibratedDialog = true
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(58.dp),
@@ -328,6 +394,21 @@ fun HomeScreen(
                 ) {
                     Text(
                         text = if (baseline?.isValid == true) "Recalibrate Profile" else "Calibrate Profile",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                // Trip History Button
+                OutlinedButton(
+                    onClick = onNavigateToHistory,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text(
+                        text = "📜 Trip History & Logs",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold
                     )

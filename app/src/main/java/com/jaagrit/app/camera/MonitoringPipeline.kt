@@ -7,7 +7,10 @@ import androidx.camera.view.PreviewView
 import androidx.lifecycle.LifecycleOwner
 import com.jaagrit.app.audio.FamilyClipPlayer
 import com.jaagrit.app.data.BaselineStore
+import com.jaagrit.app.data.JaagritDatabase
 import com.jaagrit.app.data.SettingsStore
+import com.jaagrit.app.data.model.AlertSample
+import com.jaagrit.app.data.repository.TripRepository
 import com.jaagrit.app.engine.Action
 import com.jaagrit.app.engine.AlertEventType
 import com.jaagrit.app.engine.Baseline
@@ -94,10 +97,15 @@ class MonitoringPipeline(
     },
     private val smsNotifier: SmsNotifier = SmsNotifier(context, settingsStore),
     initialConfig: Config = Config.DEFAULT,
-    val clock: Clock = Clock { SystemClock.elapsedRealtime() }
+    val clock: Clock = Clock { SystemClock.elapsedRealtime() },
+    private val tripRepository: TripRepository = TripRepository(
+        JaagritDatabase.getDatabase(context).tripDao(),
+        JaagritDatabase.getDatabase(context).alertDao()
+    )
 ) {
     private val tag = "JAAGRIT"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val dbScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     // Confinement to single thread/coroutine (AUDIT-003)
     private val engineDispatcher = Dispatchers.Default.limitedParallelism(1)
 
@@ -114,7 +122,15 @@ class MonitoringPipeline(
     private var engine: FatigueEngine = FatigueEngine(config = currentConfig, clock = clock)
     private val driveStartTimeMs: Long = clock.nowMs()
     private var totalAlerts = 0
+    private var totalCriticalAlerts = 0
+    private var currentTripId: Long? = null
     private var l5NotSentLoggedForEpisode = false
+
+    // Alert episode tracking for Room logging
+    private var activeEpisodeStartRealtimeMs: Long? = null
+    private var activeEpisodeStartWallMs: Long? = null
+    private var activeEpisodeMaxLevel: Level = Level.L0
+    private var activeEpisodeReason: String = ""
 
     private val _uiState = MutableStateFlow(
         MonitoringUiState(
@@ -134,10 +150,18 @@ class MonitoringPipeline(
         isStarted = true
         Log.i(tag, "Starting MonitoringPipeline session")
 
-        // 1. Start CameraX preview
+        // 1. Create Room Trip off main thread
+        val wallStart = System.currentTimeMillis()
+        dbScope.launch {
+            val tripId = tripRepository.createTrip(startMs = wallStart)
+            currentTripId = tripId
+            Log.i(tag, "Room DB: Created active Trip #$tripId at wall $wallStart")
+        }
+
+        // 2. Start CameraX preview
         cameraController.startCamera(lifecycleOwner, previewView)
 
-        // 2. Sequential engine loop confined to engineDispatcher (AUDIT-003)
+        // 3. Sequential engine loop confined to engineDispatcher (AUDIT-003)
         scope.launch(engineDispatcher) {
             val baseline = baselineStore.getBaseline() ?: Baseline.DEFAULT
             val demoTimersSaved = settingsStore.isDemoTimersEnabled()
@@ -168,7 +192,7 @@ class MonitoringPipeline(
             }
         }
 
-        // 3. Producers
+        // 4. Producers
         scope.launch {
             landmarkerWrapper.visionResult.collect { result ->
                 eventChannel.send(PipelineEvent.Vision(result))
@@ -179,6 +203,24 @@ class MonitoringPipeline(
             while (isActive) {
                 delay(100L)
                 eventChannel.send(PipelineEvent.Tick)
+            }
+        }
+
+        // 5. 5-second alertness sampling flushed to Room DB (crash resilient)
+        scope.launch {
+            while (isActive) {
+                delay(5000L)
+                val tripId = currentTripId ?: continue
+                val currentAlertness = _uiState.value.alertness
+                val wallNow = System.currentTimeMillis()
+                val sample = AlertSample(
+                    tripId = tripId,
+                    tsMs = wallNow,
+                    alertness = currentAlertness
+                )
+                dbScope.launch {
+                    tripRepository.flushAlertSamples(listOf(sample))
+                }
             }
         }
     }
@@ -196,6 +238,9 @@ class MonitoringPipeline(
         speaker.stop()
 
         _uiState.update { it.copy(smsNotificationStatus = null) }
+
+        // Record alert event resolution via imAwake button
+        endActiveAlertEpisode(responseType = "imAwake")
 
         // Confined processing via event channel (AUDIT-003)
         eventChannel.trySend(PipelineEvent.ImAwake)
@@ -223,10 +268,29 @@ class MonitoringPipeline(
     }
 
     /**
-     * Stop and release all underlying resources.
+     * Stop and release all underlying resources. Closes the active trip in Room.
      */
     fun release() {
         Log.i(tag, "Releasing MonitoringPipeline")
+        // If an alert was still active, close it as 'none'
+        endActiveAlertEpisode(responseType = "none")
+
+        val tripId = currentTripId
+        if (tripId != null) {
+            val endWall = System.currentTimeMillis()
+            val alerts = totalAlerts
+            val criticals = totalCriticalAlerts
+            dbScope.launch {
+                tripRepository.closeTrip(
+                    tripId = tripId,
+                    endMs = endWall,
+                    alertCount = alerts,
+                    criticalCount = criticals
+                )
+                Log.i(tag, "Room DB: Closed Trip #$tripId (endMs=$endWall, alerts=$alerts, critical=$criticals)")
+            }
+        }
+
         isStarted = false
         scope.cancel()
         eventChannel.close()
@@ -261,6 +325,11 @@ class MonitoringPipeline(
     ) {
         val availability = smsNotifier.checkAvailability()
 
+        // Check if ladder resolved response via continuous open eyes (>= 3s)
+        if (output.actions.any { it is Action.Log && it.detail.contains("Eyes open >= 3s") }) {
+            endActiveAlertEpisode(responseType = "eyesOpen")
+        }
+
         // AUDIT-004: derive alarm, vibration, family clip, and red flash state from ladder state (output.isAlertActive)
         // Alarm and vibration keep running through FACE_LOST and stop only on response (which clears isAlertActive)
         val isAlertActive = output.isAlertActive
@@ -269,6 +338,10 @@ class MonitoringPipeline(
             familyClipPlayer.stop()
             vibeManager.cancel()
             l5NotSentLoggedForEpisode = false
+            // If alert resolved without explicit awake/eyesOpen/voice, mark as dismissed
+            if (activeEpisodeStartRealtimeMs != null) {
+                endActiveAlertEpisode(responseType = "dismissed")
+            }
         }
 
         // If SMS is unavailable at L5: no fake countdown. Show "Emergency SMS unavailable (reason)"
@@ -281,10 +354,22 @@ class MonitoringPipeline(
 
         if (output.level == Level.L5 && availability != SmsAvailability.READY && !l5NotSentLoggedForEpisode) {
             l5NotSentLoggedForEpisode = true
-            scope.launch {
+            val tripId = currentTripId
+            val wallNow = System.currentTimeMillis()
+            dbScope.launch {
                 val preparedMsg = smsNotifier.prepareEmergencyMessage(totalAlerts)
                 smsNotifier.copyMessageToClipboard(preparedMsg)
                 Log.w(tag, "Engine Log: [${AlertEventType.L5_NOT_SENT}] Emergency SMS unavailable (${availability.reason}) - message copied to clipboard")
+                if (tripId != null) {
+                    tripRepository.recordAlertEvent(
+                        tripId = tripId,
+                        level = Level.L5,
+                        reason = "Emergency SMS unavailable (${availability.reason})",
+                        durationMs = 0L,
+                        response = "L5_NOT_SENT",
+                        tsMs = wallNow
+                    )
+                }
             }
         }
 
@@ -329,8 +414,17 @@ class MonitoringPipeline(
                 is Action.ShowRedFlash -> {
                     Log.w(tag, "Action.ShowRedFlash triggered")
                     totalAlerts++ // Counted once per L3 episode (AUDIT-001, AUDIT-004)
+                    totalCriticalAlerts++
                     alarmToneGenerator.startAlarm()
                     _uiState.update { it.copy(isRedFlashActive = true, alertCount = totalAlerts) }
+
+                    // Start alert episode tracking for Room DB
+                    if (activeEpisodeStartRealtimeMs == null) {
+                        activeEpisodeStartRealtimeMs = clock.nowMs()
+                        activeEpisodeStartWallMs = System.currentTimeMillis()
+                        activeEpisodeMaxLevel = Level.L3
+                        activeEpisodeReason = _uiState.value.reasons.firstOrNull() ?: "Critical drowsiness detected"
+                    }
                 }
                 is Action.Vibrate -> {
                     Log.d(tag, "Action.Vibrate triggered: ${action.pattern}")
@@ -342,13 +436,16 @@ class MonitoringPipeline(
                 }
                 is Action.PlayFamilyClip -> {
                     Log.i(tag, "Action.PlayFamilyClip triggered: ${action.index}")
-                    // PlayFamilyClip must NOT increment totalAlerts (counted once per L3 episode)
+                    activeEpisodeMaxLevel = maxOf(activeEpisodeMaxLevel, Level.L4)
                     familyClipPlayer.play(action.index)
                 }
                 is Action.SendSms -> {
                     Log.w(tag, "Action.SendSms triggered: ${action.reason}")
+                    activeEpisodeMaxLevel = maxOf(activeEpisodeMaxLevel, Level.L5)
                     scope.launch {
                         val availability = smsNotifier.checkAvailability()
+                        val tripId = currentTripId
+                        val wallNow = System.currentTimeMillis()
                         if (availability != SmsAvailability.READY) {
                             val reason = availability.reason
                             val preparedMsg = smsNotifier.prepareEmergencyMessage(totalAlerts)
@@ -358,6 +455,18 @@ class MonitoringPipeline(
                                 it.copy(
                                     smsNotificationStatus = "Emergency SMS unavailable ($reason)"
                                 )
+                            }
+                            if (tripId != null) {
+                                dbScope.launch {
+                                    tripRepository.recordAlertEvent(
+                                        tripId = tripId,
+                                        level = Level.L5,
+                                        reason = "Emergency SMS unavailable ($reason)",
+                                        durationMs = 0L,
+                                        response = "L5_NOT_SENT",
+                                        tsMs = wallNow
+                                    )
+                                }
                             }
                         } else {
                             _uiState.update { it.copy(smsNotificationStatus = "Sending SMS...") }
@@ -371,6 +480,18 @@ class MonitoringPipeline(
                                 is SmsResult.Success -> "SMS sent to ${result.maskedNumber}"
                                 is SmsResult.Failure -> {
                                     Log.w(tag, "Engine Log: [${AlertEventType.L5_NOT_SENT}] SMS dispatch failure: ${result.reason}")
+                                    if (tripId != null) {
+                                        dbScope.launch {
+                                            tripRepository.recordAlertEvent(
+                                                tripId = tripId,
+                                                level = Level.L5,
+                                                reason = "SMS dispatch failure: ${result.reason}",
+                                                durationMs = 0L,
+                                                response = "L5_NOT_SENT",
+                                                tsMs = wallNow
+                                            )
+                                        }
+                                    }
                                     "SMS not sent: ${result.reason}"
                                 }
                             }
@@ -385,6 +506,34 @@ class MonitoringPipeline(
                 is Action.AskQuestion -> {
                     Log.d(tag, "Action.AskQuestion triggered: ${action.q.prompt}")
                 }
+            }
+        }
+    }
+
+    private fun endActiveAlertEpisode(responseType: String) {
+        val startRealtime = activeEpisodeStartRealtimeMs ?: return
+        val startWall = activeEpisodeStartWallMs ?: System.currentTimeMillis()
+        val duration = (clock.nowMs() - startRealtime).coerceAtLeast(0L)
+        val level = activeEpisodeMaxLevel
+        val reason = activeEpisodeReason.ifBlank { "Fatigue alert" }
+        val tripId = currentTripId
+
+        activeEpisodeStartRealtimeMs = null
+        activeEpisodeStartWallMs = null
+        activeEpisodeMaxLevel = Level.L0
+        activeEpisodeReason = ""
+
+        if (tripId != null) {
+            dbScope.launch {
+                tripRepository.recordAlertEvent(
+                    tripId = tripId,
+                    level = level,
+                    reason = reason,
+                    durationMs = duration,
+                    response = responseType,
+                    tsMs = startWall
+                )
+                Log.i(tag, "Room DB: Logged AlertEvent (level=$level, duration=${duration}ms, response=$responseType)")
             }
         }
     }
