@@ -89,7 +89,10 @@ data class EngineOutput(
     val alertness: Int,
     val reasons: List<String>,
     val actions: List<Action>,
-    val isAlertActive: Boolean = false
+    val isAlertActive: Boolean = false,
+    val l5CountdownSeconds: Int? = null,
+    val falseAlertCount: Int = 0,
+    val suggestRecalibration: Boolean = false
 ) {
     companion object {
         val INITIAL = EngineOutput(
@@ -98,7 +101,10 @@ data class EngineOutput(
             alertness = 100,
             reasons = emptyList(),
             actions = emptyList(),
-            isAlertActive = false
+            isAlertActive = false,
+            l5CountdownSeconds = null,
+            falseAlertCount = 0,
+            suggestRecalibration = false
         )
     }
 }

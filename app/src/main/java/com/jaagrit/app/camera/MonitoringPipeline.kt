@@ -5,7 +5,9 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.camera.view.PreviewView
 import androidx.lifecycle.LifecycleOwner
+import com.jaagrit.app.audio.FamilyClipPlayer
 import com.jaagrit.app.data.BaselineStore
+import com.jaagrit.app.data.SettingsStore
 import com.jaagrit.app.engine.Action
 import com.jaagrit.app.engine.Baseline
 import com.jaagrit.app.engine.Clock
@@ -14,10 +16,13 @@ import com.jaagrit.app.engine.DriverState
 import com.jaagrit.app.engine.EngineOutput
 import com.jaagrit.app.engine.FaceFrame
 import com.jaagrit.app.engine.FatigueEngine
+import com.jaagrit.app.engine.Lang
 import com.jaagrit.app.engine.Level
 import com.jaagrit.app.engine.VoiceEvent
 import com.jaagrit.app.platform.AlarmToneGenerator
 import com.jaagrit.app.platform.VibeManager
+import com.jaagrit.app.sms.SmsNotifier
+import com.jaagrit.app.sms.SmsResult
 import com.jaagrit.app.speech.TtsSpeaker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,7 +51,13 @@ data class MonitoringUiState(
     val faceFound: Boolean = false,
     val inferenceTimeMs: Long = 0L,
     val fps: Float = 0f,
-    val faceFrame: FaceFrame = FaceFrame.EMPTY
+    val faceFrame: FaceFrame = FaceFrame.EMPTY,
+    val l5CountdownSeconds: Int? = null,
+    val smsNotificationStatus: String? = null,
+    val falseAlertCount: Int = 0,
+    val suggestRecalibration: Boolean = false,
+    val demoTimers: Boolean = false,
+    val quickCalibration: Boolean = false
 ) {
     val driveTimeFormatted: String
         get() {
@@ -74,7 +85,12 @@ class MonitoringPipeline(
     private val alarmToneGenerator: AlarmToneGenerator = AlarmToneGenerator(),
     private val vibeManager: VibeManager = VibeManager(context),
     private val baselineStore: BaselineStore = BaselineStore(context),
-    val config: Config = Config.DEFAULT,
+    private val settingsStore: SettingsStore = SettingsStore(context),
+    private val familyClipPlayer: FamilyClipPlayer = FamilyClipPlayer(context) { phrase ->
+        speaker.speak(phrase, Lang.HI, urgent = true)
+    },
+    private val smsNotifier: SmsNotifier = SmsNotifier(context, settingsStore),
+    initialConfig: Config = Config.DEFAULT,
     val clock: Clock = Clock { SystemClock.elapsedRealtime() }
 ) {
     private val tag = "JAAGRIT"
@@ -90,11 +106,18 @@ class MonitoringPipeline(
 
     private val eventChannel = Channel<PipelineEvent>(capacity = Channel.UNLIMITED)
 
-    private var engine: FatigueEngine = FatigueEngine(config = config, clock = clock)
+    private var currentConfig: Config = initialConfig
+    private var currentBaseline: Baseline = Baseline.DEFAULT
+    private var engine: FatigueEngine = FatigueEngine(config = currentConfig, clock = clock)
     private val driveStartTimeMs: Long = clock.nowMs()
     private var totalAlerts = 0
 
-    private val _uiState = MutableStateFlow(MonitoringUiState())
+    private val _uiState = MutableStateFlow(
+        MonitoringUiState(
+            demoTimers = initialConfig.demoTimers,
+            quickCalibration = initialConfig.quickCalibration
+        )
+    )
     val uiState: StateFlow<MonitoringUiState> = _uiState.asStateFlow()
 
     private var isStarted = false
@@ -113,9 +136,24 @@ class MonitoringPipeline(
         // 2. Sequential engine loop confined to engineDispatcher (AUDIT-003)
         scope.launch(engineDispatcher) {
             val baseline = baselineStore.getBaseline() ?: Baseline.DEFAULT
-            Log.d(tag, "Loaded driver baseline: threshold=${baseline.threshold}, isValid=${baseline.isValid}")
-            engine = FatigueEngine(config = config, clock = clock, baseline = baseline)
+            val demoTimersSaved = settingsStore.isDemoTimersEnabled()
+            val quickCalibSaved = settingsStore.isQuickCalibrationEnabled()
+            currentBaseline = baseline
+            currentConfig = currentConfig.copy(
+                demoTimers = demoTimersSaved,
+                quickCalibration = quickCalibSaved
+            )
+
+            Log.d(tag, "Loaded driver baseline: threshold=${baseline.threshold}, isValid=${baseline.isValid}, demoTimers=$demoTimersSaved")
+            engine = FatigueEngine(config = currentConfig, clock = clock, baseline = currentBaseline)
             engine.resetDrive(driveStartTimeMs)
+
+            _uiState.update {
+                it.copy(
+                    demoTimers = demoTimersSaved,
+                    quickCalibration = quickCalibSaved
+                )
+            }
 
             for (event in eventChannel) {
                 when (event) {
@@ -148,11 +186,33 @@ class MonitoringPipeline(
         Log.i(tag, "User tapped 'I'M AWAKE' — silencing alerts and resetting state")
         // Immediate physical silencing for instant tactile/auditory feedback
         alarmToneGenerator.stopAlarm()
+        familyClipPlayer.stop()
         vibeManager.cancel()
         speaker.stop()
 
         // Confined processing via event channel (AUDIT-003)
         eventChannel.trySend(PipelineEvent.ImAwake)
+    }
+
+    fun toggleDemoTimers() {
+        scope.launch(engineDispatcher) {
+            val newDemo = !currentConfig.demoTimers
+            currentConfig = currentConfig.copy(demoTimers = newDemo)
+            engine = FatigueEngine(config = currentConfig, clock = clock, baseline = currentBaseline)
+            settingsStore.setDemoTimers(newDemo)
+            _uiState.update { it.copy(demoTimers = newDemo) }
+            Log.i(tag, "Toggled DEMO_TIMERS: $newDemo (L4=${currentConfig.l4AfterL3Ms}ms, L5=${currentConfig.l5AfterL4Ms}ms)")
+        }
+    }
+
+    fun toggleQuickCalibration() {
+        scope.launch(engineDispatcher) {
+            val newQuick = !currentConfig.quickCalibration
+            currentConfig = currentConfig.copy(quickCalibration = newQuick)
+            settingsStore.setQuickCalibration(newQuick)
+            _uiState.update { it.copy(quickCalibration = newQuick) }
+            Log.i(tag, "Toggled QUICK_CALIBRATION: $newQuick")
+        }
     }
 
     /**
@@ -164,6 +224,7 @@ class MonitoringPipeline(
         scope.cancel()
         eventChannel.close()
         alarmToneGenerator.release()
+        familyClipPlayer.release()
         vibeManager.cancel()
         speaker.shutdown()
         cameraController.release()
@@ -193,11 +254,12 @@ class MonitoringPipeline(
     ) {
         executeActions(output.actions)
 
-        // AUDIT-004: derive alarm, vibration, and red flash state from ladder state (output.isAlertActive)
+        // AUDIT-004: derive alarm, vibration, family clip, and red flash state from ladder state (output.isAlertActive)
         // Alarm and vibration keep running through FACE_LOST and stop only on response (which clears isAlertActive)
         val isAlertActive = output.isAlertActive
         if (!isAlertActive && _uiState.value.isRedFlashActive) {
             alarmToneGenerator.stopAlarm()
+            familyClipPlayer.stop()
             vibeManager.cancel()
         }
 
@@ -213,7 +275,12 @@ class MonitoringPipeline(
                 fps = visionResult?.fps ?: current.fps,
                 faceFrame = visionResult?.faceFrame ?: current.faceFrame,
                 driveTimeMs = (clock.nowMs() - driveStartTimeMs).coerceAtLeast(0L),
-                alertCount = totalAlerts
+                alertCount = totalAlerts,
+                l5CountdownSeconds = output.l5CountdownSeconds,
+                falseAlertCount = output.falseAlertCount,
+                suggestRecalibration = output.suggestRecalibration,
+                demoTimers = currentConfig.demoTimers,
+                quickCalibration = currentConfig.quickCalibration
             )
         }
     }
@@ -237,11 +304,27 @@ class MonitoringPipeline(
                     speaker.speak(action.text, action.lang, action.urgent)
                 }
                 is Action.PlayFamilyClip -> {
-                    Log.d(tag, "Action.PlayFamilyClip triggered: ${action.index}")
+                    Log.i(tag, "Action.PlayFamilyClip triggered: ${action.index}")
                     // PlayFamilyClip must NOT increment totalAlerts (counted once per L3 episode)
+                    familyClipPlayer.play(action.index)
                 }
                 is Action.SendSms -> {
                     Log.w(tag, "Action.SendSms triggered: ${action.reason}")
+                    scope.launch {
+                        _uiState.update { it.copy(smsNotificationStatus = "Sending SMS...") }
+                        val result = smsNotifier.sendEmergencyAlert(
+                            totalAlerts = totalAlerts,
+                            onStatusUpdate = { status ->
+                                _uiState.update { it.copy(smsNotificationStatus = status) }
+                            }
+                        )
+                        val statusText = when (result) {
+                            is SmsResult.Success -> "SMS sent to ${result.maskedNumber}"
+                            is SmsResult.Failure -> "SMS not sent: ${result.reason}"
+                        }
+                        Log.i(tag, "Sms dispatch result: $statusText")
+                        _uiState.update { it.copy(smsNotificationStatus = statusText) }
+                    }
                 }
                 is Action.Log -> {
                     Log.d(tag, "Engine Log: [${action.event}] ${action.detail}")

@@ -106,6 +106,9 @@ fun CalibrationScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val baselineStore = remember { BaselineStore(context) }
+    val settingsStore = remember { com.jaagrit.app.data.SettingsStore(context) }
+    val isQuickCalib by settingsStore.quickCalibrationFlow.collectAsState(initial = false)
+    val activeConfig = remember(isQuickCalib, config) { config.copy(quickCalibration = isQuickCalib) }
 
     // Keep screen on during calibration
     DisposableEffect(Unit) {
@@ -141,7 +144,7 @@ fun CalibrationScreen(
 
     // Calibration state
     var currentStep by remember { mutableStateOf(CalibrationStep.LOOK_NORMAL) }
-    var countdownSeconds by remember { mutableIntStateOf((config.calibrationOpenMs / 1000L).toInt()) }
+    var countdownSeconds by remember(activeConfig) { mutableIntStateOf((activeConfig.calibrationOpenMs / 1000L).toInt()) }
     var phaseStartMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     // Sample storage
@@ -180,7 +183,7 @@ fun CalibrationScreen(
         when (currentStep) {
             CalibrationStep.LOOK_NORMAL -> {
                 openPhaseStartMs = phaseStartMs
-                val totalSecs = (config.calibrationOpenMs / 1000L).toInt()
+                val totalSecs = (activeConfig.calibrationOpenMs / 1000L).toInt()
                 for (s in totalSecs downTo 1) {
                     countdownSeconds = s
                     delay(1000L)
@@ -189,7 +192,7 @@ fun CalibrationScreen(
             }
             CalibrationStep.CLOSE_EYES -> {
                 closedPhaseStartMs = phaseStartMs
-                val totalSecs = (config.calibrationClosedMs / 1000L).toInt()
+                val totalSecs = (activeConfig.calibrationClosedMs / 1000L).toInt()
                 for (s in totalSecs downTo 1) {
                     countdownSeconds = s
                     delay(1000L)
@@ -389,7 +392,7 @@ fun CalibrationScreen(
                         englishPrompt = "Look normally at the road ahead",
                         instruction = "Keep your eyes naturally open in normal driving posture. Blinks are natural and counted.",
                         countdown = countdownSeconds,
-                        maxSeconds = (config.calibrationOpenMs / 1000L).toInt()
+                        maxSeconds = (activeConfig.calibrationOpenMs / 1000L).toInt()
                     )
                 }
                 CalibrationStep.CLOSE_EYES -> {
@@ -399,7 +402,7 @@ fun CalibrationScreen(
                         englishPrompt = "Close your eyes completely",
                         instruction = "Keep your eyes gently closed until the timer ends to record your closed-eye baseline.",
                         countdown = countdownSeconds,
-                        maxSeconds = (config.calibrationClosedMs / 1000L).toInt(),
+                        maxSeconds = (activeConfig.calibrationClosedMs / 1000L).toInt(),
                         accentColor = Color(0xFFFFB74D)
                     )
                 }

@@ -186,7 +186,10 @@ class FatigueEngine(
             alertness = alertnessScore,
             reasons = reasons,
             actions = ladderActions,
-            isAlertActive = ladder.isAlertActive
+            isAlertActive = ladder.isAlertActive,
+            l5CountdownSeconds = ladder.getL5RemainingSeconds(now),
+            falseAlertCount = ladder.falseAlertCount,
+            suggestRecalibration = ladder.suggestRecalibration
         )
     }
 
@@ -210,7 +213,10 @@ class FatigueEngine(
                 alertness = smoothedAlertness.roundToInt().coerceIn(0, 100),
                 reasons = listOf("Face not visible in camera"),
                 actions = actions,
-                isAlertActive = ladder.isAlertActive
+                isAlertActive = ladder.isAlertActive,
+                l5CountdownSeconds = ladder.getL5RemainingSeconds(now),
+                falseAlertCount = ladder.falseAlertCount,
+                suggestRecalibration = ladder.suggestRecalibration
             )
         }
 
@@ -240,7 +246,10 @@ class FatigueEngine(
             alertness = smoothedAlertness.roundToInt().coerceIn(0, 100),
             reasons = reasons,
             actions = actions,
-            isAlertActive = ladder.isAlertActive
+            isAlertActive = ladder.isAlertActive,
+            l5CountdownSeconds = ladder.getL5RemainingSeconds(now),
+            falseAlertCount = ladder.falseAlertCount,
+            suggestRecalibration = ladder.suggestRecalibration
         )
     }
 
@@ -284,7 +293,10 @@ class FatigueEngine(
             alertness = smoothedAlertness.roundToInt().coerceIn(0, 100),
             reasons = reasons,
             actions = actions,
-            isAlertActive = ladder.isAlertActive
+            isAlertActive = ladder.isAlertActive,
+            l5CountdownSeconds = ladder.getL5RemainingSeconds(now),
+            falseAlertCount = ladder.falseAlertCount,
+            suggestRecalibration = ladder.suggestRecalibration
         )
     }
 
@@ -346,7 +358,10 @@ class FatigueEngine(
             alertness = smoothedAlertness.roundToInt(),
             reasons = listOf("Face not visible in camera"),
             actions = actions,
-            isAlertActive = ladder.isAlertActive
+            isAlertActive = ladder.isAlertActive,
+            l5CountdownSeconds = ladder.getL5RemainingSeconds(now),
+            falseAlertCount = ladder.falseAlertCount,
+            suggestRecalibration = ladder.suggestRecalibration
         )
     }
 

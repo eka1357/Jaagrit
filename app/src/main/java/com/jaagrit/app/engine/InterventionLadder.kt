@@ -71,8 +71,41 @@ class InterventionLadder(
     // Face lost state (AUDIT-011)
     private var isFaceLost: Boolean = false
 
+    // False alert tracking (LAD-6)
+    private val dismissedAlertTimestamps = ArrayDeque<Long>()
+
     val isAlertActive: Boolean
         get() = isL3Active || isL4Active || isL5Active
+
+    /**
+     * Seconds remaining until L5 emergency SMS fires while L4 is active (LAD-4).
+     * Returns null if not in the L4 -> L5 countdown window.
+     */
+    fun getL5RemainingSeconds(now: Long = clock.nowMs()): Int? {
+        return if (isL4Active && !isL5Active && l5EscalateAtMs != null) {
+            val remainingMs = l5EscalateAtMs!! - now
+            maxOf(0, (remainingMs / 1000).toInt())
+        } else {
+            null
+        }
+    }
+
+    /** Prune dismissed alert timestamps older than 10 minutes (LAD-6) */
+    fun pruneOldDismissals(now: Long = clock.nowMs()) {
+        val cutoff = now - config.falseAlertLimitWindowMs
+        while (dismissedAlertTimestamps.isNotEmpty() && dismissedAlertTimestamps.first() <= cutoff) {
+            dismissedAlertTimestamps.removeFirst()
+        }
+    }
+
+    val falseAlertCount: Int
+        get() {
+            pruneOldDismissals(clock.nowMs())
+            return dismissedAlertTimestamps.size
+        }
+
+    val suggestRecalibration: Boolean
+        get() = falseAlertCount > config.falseAlertLimitCount
 
     /**
      * Process a frame and return any newly triggered ladder actions.
@@ -218,6 +251,12 @@ class InterventionLadder(
      */
     fun processResponse(now: Long = clock.nowMs(), reason: String): List<Action> {
         val wasActive = isL3Active || isL4Active || isL5Active || pendingHeadEscalateAtMs != null
+        val wasL3Episode = isL3Active || isL4Active || isL5Active
+        if (wasL3Episode) {
+            dismissedAlertTimestamps.addLast(now)
+            pruneOldDismissals(now)
+        }
+
         isL3Active = false
         isL4Active = false
         isL5Active = false
@@ -254,6 +293,7 @@ class InterventionLadder(
         headRestoreStartTimeMs = null
         eyesOpenContinuousStartTimeMs = null
         isFaceLost = false
+        dismissedAlertTimestamps.clear()
     }
 
     // --- Private Helpers ---
