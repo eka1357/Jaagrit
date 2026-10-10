@@ -173,7 +173,7 @@ class FatigueEngine(
         }
 
         if (ladder.isL5Active) {
-            reasons.add(0, "L5: Unresponsive - SMS dispatched")
+            reasons.add(0, "L5: Driver unresponsive")
         } else if (ladder.isL4Active) {
             reasons.add(0, "L4: Unresponsive to alarm - Family voice active")
         } else if (ladder.isL3Active) {
@@ -233,7 +233,7 @@ class FatigueEngine(
 
         val reasons = mutableListOf<String>()
         if (ladder.isL5Active) {
-            reasons.add("L5: Unresponsive - SMS dispatched")
+            reasons.add("L5: Driver unresponsive")
         } else if (ladder.isL4Active) {
             reasons.add("L4: Unresponsive to alarm - Family voice active")
         } else if (ladder.isL3Active) {
@@ -280,7 +280,7 @@ class FatigueEngine(
 
         val reasons = mutableListOf<String>()
         if (ladder.isL5Active) {
-            reasons.add("L5: Unresponsive - SMS dispatched")
+            reasons.add("L5: Driver unresponsive")
         } else if (ladder.isL4Active) {
             reasons.add("L4: Unresponsive to alarm - Family voice active")
         } else if (ladder.isL3Active) {

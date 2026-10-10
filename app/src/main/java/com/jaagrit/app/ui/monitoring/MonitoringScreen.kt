@@ -10,7 +10,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -33,14 +32,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -69,6 +66,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.jaagrit.app.camera.MonitoringPipeline
 import com.jaagrit.app.camera.MonitoringUiState
 import com.jaagrit.app.engine.DriverState
+import com.jaagrit.app.sms.SmsNotifier
 
 @Composable
 fun MonitoringScreen(
@@ -105,7 +103,7 @@ fun MonitoringScreen(
         )
     }
 
-    var hasCameraPermission by remember {
+    var cameraGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
                 context,
@@ -114,20 +112,64 @@ fun MonitoringScreen(
         )
     }
 
+    var smsGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.SEND_SMS
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    var locationGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED ||
+                    ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    var preDriveDismissed by remember { mutableStateOf(false) }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
-        hasCameraPermission = results[Manifest.permission.CAMERA] == true ||
+        cameraGranted = results[Manifest.permission.CAMERA] == true ||
                 ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        smsGranted = results[Manifest.permission.SEND_SMS] == true ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
+        locationGranted = results[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                results[Manifest.permission.ACCESS_COARSE_LOCATION] == true ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+        if (cameraGranted && smsGranted && locationGranted) {
+            preDriveDismissed = true
+        }
     }
+
+    val showPreDrive = (!cameraGranted || !smsGranted || !locationGranted) && !preDriveDismissed
 
     Scaffold(
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
-        if (!hasCameraPermission) {
+        if (showPreDrive) {
             PreDrivePermissionsRationale(
+                cameraGranted = cameraGranted,
+                smsGranted = smsGranted,
+                locationGranted = locationGranted,
                 onRequestPermissions = {
                     permissionLauncher.launch(requiredPermissions)
+                },
+                onContinueAnyway = {
+                    if (cameraGranted) {
+                        preDriveDismissed = true
+                    }
                 },
                 onBack = onEndDrive,
                 modifier = Modifier
@@ -165,7 +207,27 @@ private fun ActiveMonitoringContent(
         }
     }
 
-    // State-tailored theme colors
+    val isAlert = uiState.isRedFlashActive
+
+    // Flashing opaque red animation for active alerts (no bleed-through)
+    val infiniteTransition = rememberInfiniteTransition(label = "RedAlertFlash")
+    val flashPulse by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 350, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "RedPulse"
+    )
+
+    val backgroundColor = if (isAlert) {
+        if (flashPulse > 0.5f) Color(0xFFB71C1C) else Color(0xFFD32F2F)
+    } else {
+        MaterialTheme.colorScheme.background
+    }
+
+    // State-tailored theme colors for normal mode
     val themeColor = when (uiState.state) {
         DriverState.NORMAL -> Color(0xFF2E7D32)     // Rich Green
         DriverState.CAUTION -> Color(0xFFF57F17)    // Amber
@@ -184,75 +246,88 @@ private fun ActiveMonitoringContent(
         DriverState.CALIBRATING -> "कैलिब्रेशन • Calibrating"
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-        // 1. Top Header with Privacy Badge and Long-press for Telemetry
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier
-                .fillMaxWidth()
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onLongPress = {
-                            showDebugPanel = !showDebugPanel
-                        }
-                    )
-                }
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(backgroundColor)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // 1. Top Header
+        if (isAlert) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(top = 4.dp)
             ) {
-                // App Title
                 Text(
-                    text = "JAAGRIT",
+                    text = "JAAGRIT • CRITICAL ALERT",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Black,
                     letterSpacing = 2.sp,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = Color.White
                 )
-
-                // Privacy Badge (Rule 5 & PRODUCT.md)
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFF1B5E20).copy(alpha = 0.12f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2E7D32).copy(alpha = 0.4f))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "🔒",
-                            fontSize = 12.sp
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "ON-DEVICE • OFFLINE",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF2E7D32)
+            }
+        } else {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onLongPress = {
+                                showDebugPanel = !showDebugPanel
+                            }
                         )
                     }
-                }
-            }
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "JAAGRIT",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 2.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
 
-            Text(
-                text = if (showDebugPanel) "Telemetry Active (long-press title to close)" else "Driving Alertness Monitor",
-                fontSize = 12.sp,
-                color = if (showDebugPanel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                modifier = Modifier.padding(top = 2.dp)
-            )
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFF1B5E20).copy(alpha = 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2E7D32).copy(alpha = 0.4f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "🔒",
+                                fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "ON-DEVICE • OFFLINE",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2E7D32)
+                            )
+                        }
+                    }
+                }
+
+                Text(
+                    text = if (showDebugPanel) "Telemetry Active (long-press title to close)" else "Driving Alertness Monitor",
+                    fontSize = 12.sp,
+                    color = if (showDebugPanel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
         }
 
-        // 2. Middle Section: Camera preview + Giant Alertness Number + Metrics
+        // 2. Middle Section: Camera preview + Alertness + State + Stats / Status
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
@@ -261,14 +336,14 @@ private fun ActiveMonitoringContent(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.Center
         ) {
-            // Small Camera Preview (CAM-1)
+            // Small Camera Preview (doesn't overlap text)
             Box(
                 modifier = Modifier
-                    .size(width = 150.dp, height = 190.dp)
+                    .size(width = 140.dp, height = 175.dp)
                     .clip(RoundedCornerShape(20.dp))
                     .border(
                         width = 2.5.dp,
-                        color = if (uiState.faceFound) Color(0xFF2E7D32) else Color(0xFF757575),
+                        color = if (isAlert) Color.White else (if (uiState.faceFound) Color(0xFF2E7D32) else Color(0xFF757575)),
                         shape = RoundedCornerShape(20.dp)
                     )
                     .background(Color.Black),
@@ -292,7 +367,7 @@ private fun ActiveMonitoringContent(
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 8.dp)
+                        .padding(bottom = 6.dp)
                         .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(12.dp))
                         .padding(horizontal = 8.dp, vertical = 2.dp)
                 ) {
@@ -305,419 +380,352 @@ private fun ActiveMonitoringContent(
                 }
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // Giant Alertness Number (UI-1, PRODUCT.md)
-            Row(
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "${uiState.alertness}",
-                    fontSize = 76.sp,
-                    fontWeight = FontWeight.Black,
-                    color = themeColor,
-                    lineHeight = 76.sp
-                )
-                Text(
-                    text = "/100",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.padding(bottom = 12.dp, start = 4.dp)
-                )
-            }
+            if (isAlert) {
+                // Alert Mode State: clean white text
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "जागो! WAKE UP!",
+                        color = Color.White,
+                        fontSize = 30.sp,
+                        fontWeight = FontWeight.Black,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = "गाड़ी धीरे करो और आँखें खोलो!",
+                        color = Color.White.copy(alpha = 0.95f),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                }
 
-            // State Word Banner
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = themeColor.copy(alpha = 0.14f),
-                border = androidx.compose.foundation.BorderStroke(1.5.dp, themeColor.copy(alpha = 0.6f)),
-                modifier = Modifier.padding(top = 4.dp)
-            ) {
-                Text(
-                    text = stateWord,
-                    color = themeColor,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 17.sp,
-                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp)
-                )
-            }
+                Spacer(modifier = Modifier.height(10.dp))
 
-            // Reasons summary (if degraded)
-            if (uiState.reasons.isNotEmpty() && uiState.state != DriverState.NORMAL) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = uiState.reasons.firstOrNull() ?: "",
-                    fontSize = 13.sp,
-                    color = themeColor,
-                    fontWeight = FontWeight.Medium,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 20.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Minimal Driver View Stats: Drive Time & Alert Count
-            Card(
-                modifier = Modifier.fillMaxWidth(0.92f),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
+                // Big Score in Alert Mode: White text
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceAround,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "Drive Time",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = uiState.driveTimeFormatted,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .width(1.dp)
-                            .height(30.dp)
-                            .background(MaterialTheme.colorScheme.outlineVariant)
+                    Text(
+                        text = "${uiState.alertness}",
+                        fontSize = 68.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White,
+                        lineHeight = 68.sp
                     )
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "Alerts",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "${uiState.alertCount}",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (uiState.alertCount > 0) Color(0xFFD32F2F) else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            // Recalibration Suggestion (LAD-6: > 3 alerts dismissed in 10 min)
-            if (uiState.suggestRecalibration) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth(0.92f)
-                        .padding(top = 10.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFFFFF3E0)
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFA000))
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = "⚠️ Recalibration Suggested",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = Color(0xFFE65100)
-                        )
-                        Text(
-                            text = "${uiState.falseAlertCount} alerts dismissed in 10 minutes. Calibrating again can adapt to changing light or posture.",
-                            fontSize = 12.sp,
-                            color = Color(0xFF5D4037)
-                        )
-                    }
-                }
-            }
-
-            // Debug Telemetry Panel (shown on long-pressing title)
-            AnimatedVisibility(visible = showDebugPanel) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth(0.95f)
-                        .padding(top = 12.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f)
+                    Text(
+                        text = "/100",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.8f),
+                        modifier = Modifier.padding(bottom = 10.dp, start = 4.dp)
                     )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text = "DEBUG TELEMETRY & FLAGS (LIVE)",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        val frame = uiState.faceFrame
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(text = "EAR L: ${"%.3f".format(frame.earL)} | R: ${"%.3f".format(frame.earR)}", fontSize = 12.sp)
-                            Text(text = "AVG: ${"%.3f".format(frame.earAvg)}", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(text = "Mouth (MAR): ${"%.3f".format(frame.mar)}", fontSize = 12.sp)
-                            Text(text = "Pitch: ${"%+.1f°".format(frame.pitchDeg)} (down+)", fontSize = 12.sp)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(text = "Inference: ${uiState.inferenceTimeMs} ms", fontSize = 12.sp, color = MaterialTheme.colorScheme.outline)
-                            Text(text = "FPS: ${"%.1f".format(uiState.fps)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.outline)
-                        }
-
-                        // Flags & M6 State (D9, LAD-6, LAD-7)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "DEMO_TIMERS: ${if (uiState.demoTimers) "ON (5s/8s)" else "OFF (10s/20s)"}",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (uiState.demoTimers) Color(0xFFE65100) else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Button(
-                                onClick = { pipeline.toggleDemoTimers() },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                modifier = Modifier.height(28.dp)
-                            ) {
-                                Text(text = if (uiState.demoTimers) "Disable" else "Enable", fontSize = 11.sp)
-                            }
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "QUICK_CALIB: ${if (uiState.quickCalibration) "ON (5s/2s)" else "OFF (10s/3s)"}",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (uiState.quickCalibration) Color(0xFF1976D2) else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Button(
-                                onClick = { pipeline.toggleQuickCalibration() },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                modifier = Modifier.height(28.dp)
-                            ) {
-                                Text(text = if (uiState.quickCalibration) "Disable" else "Enable", fontSize = 11.sp)
-                            }
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(text = "False Alerts (10m): ${uiState.falseAlertCount}", fontSize = 12.sp)
-                            Text(text = "L5 Countdown: ${uiState.l5CountdownSeconds?.let { "${it}s" } ?: "N/A"}", fontSize = 12.sp)
-                        }
-                        if (uiState.smsNotificationStatus != null) {
-                            Text(
-                                text = "SMS: ${uiState.smsNotificationStatus}",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // 3. End Drive Button
-        Button(
-            onClick = onEndDrive,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.error
-            )
-        ) {
-            Text(
-                text = "End Drive",
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onError
-            )
-        }
-    }
-
-        // Full-screen flashing red state overlay for Critical Alert (UI-2, LAD-1, AUDIT-006)
-        if (uiState.isRedFlashActive) {
-            RedAlertFullScreen(
-                uiState = uiState,
-                onImAwake = { pipeline.onImAwake() },
-                modifier = Modifier.fillMaxSize()
-            )
-        }
-    }
-}
-
-/**
- * Full-screen flashing red state for Level 3 Critical Alert (UI-2, LAD-1).
- * Features high-urgency flashing red background, clear Devanagari/English warnings,
- * and a giant prominent "I'M AWAKE" button that resets the alert.
- */
-@Composable
-private fun RedAlertFullScreen(
-    uiState: MonitoringUiState,
-    onImAwake: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    // Flashing red animation
-    val infiniteTransition = rememberInfiniteTransition(label = "RedAlertFlash")
-    val flashAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.65f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 350, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "FlashAlpha"
-    )
-
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color(0xFFD32F2F).copy(alpha = flashAlpha))
-            .padding(24.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Warning Icon and Header
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(top = 40.dp)
-            ) {
-                Text(
-                    text = "⚠️",
-                    fontSize = 64.sp
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "जागो! WAKE UP!",
-                    color = Color.White,
-                    fontSize = 36.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 2.sp,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "गाड़ी धीरे करो और आँखें खोलो!",
-                    color = Color.White.copy(alpha = 0.95f),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center
-                )
-            }
-
-            // Visible L5 Countdown or In-App SMS Status (LAD-4, D6)
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(vertical = 12.dp)
-            ) {
-                if (uiState.l5CountdownSeconds != null) {
-                    Surface(
-                        shape = RoundedCornerShape(18.dp),
-                        color = Color.Black.copy(alpha = 0.65f),
-                        border = androidx.compose.foundation.BorderStroke(2.dp, Color(0xFFFFD54F)),
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
-                        ) {
-                            Text(
-                                text = "EMERGENCY SMS IN",
-                                color = Color(0xFFFFD54F),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 2.sp
-                            )
-                            Text(
-                                text = "${uiState.l5CountdownSeconds}s",
-                                color = Color(0xFFFFD54F),
-                                fontSize = 42.sp,
-                                fontWeight = FontWeight.Black
-                            )
-                            Text(
-                                text = "Tap I'M AWAKE to cancel SMS",
-                                color = Color.White.copy(alpha = 0.85f),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
                 }
 
-                if (uiState.smsNotificationStatus != null) {
+                // L5 Status Line (Derived strictly from SmsNotifier / real SmsResult)
+                val l5StatusText = SmsNotifier.formatL5StatusLabel(
+                    level = uiState.level,
+                    l5CountdownSeconds = uiState.l5CountdownSeconds,
+                    smsNotificationStatus = uiState.smsNotificationStatus,
+                    smsAvailability = uiState.smsAvailability
+                )
+                if (l5StatusText != null) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color.Black.copy(alpha = 0.8f),
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color.Black.copy(alpha = 0.55f),
+                        border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFFFD54F)),
                         modifier = Modifier.padding(horizontal = 16.dp)
                     ) {
                         Text(
-                            text = uiState.smsNotificationStatus,
-                            color = Color.White,
+                            text = l5StatusText,
+                            color = Color(0xFFFFD54F),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                            textAlign = TextAlign.Center
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }
                 }
-            }
+            } else {
+                // Giant Alertness Number (Normal Mode)
+                Row(
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "${uiState.alertness}",
+                        fontSize = 76.sp,
+                        fontWeight = FontWeight.Black,
+                        color = themeColor,
+                        lineHeight = 76.sp
+                    )
+                    Text(
+                        text = "/100",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.padding(bottom = 12.dp, start = 4.dp)
+                    )
+                }
 
-            // Primary Emergency Action: Giant "I'M AWAKE" Button (UI-2)
+                // State Word Banner
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = themeColor.copy(alpha = 0.14f),
+                    border = androidx.compose.foundation.BorderStroke(1.5.dp, themeColor.copy(alpha = 0.6f)),
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    Text(
+                        text = stateWord,
+                        color = themeColor,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp)
+                    )
+                }
+
+                // Reasons summary (if degraded)
+                if (uiState.reasons.isNotEmpty() && uiState.state != DriverState.NORMAL) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = uiState.reasons.firstOrNull() ?: "",
+                        fontSize = 13.sp,
+                        color = themeColor,
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 20.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Minimal Driver View Stats: Drive Time & Alert Count
+                Card(
+                    modifier = Modifier.fillMaxWidth(0.92f),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.SpaceAround,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "Drive Time",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = uiState.driveTimeFormatted,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(30.dp)
+                                .background(MaterialTheme.colorScheme.outlineVariant)
+                        )
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "Alerts",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "${uiState.alertCount}",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (uiState.alertCount > 0) Color(0xFFD32F2F) else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                // Recalibration Suggestion (LAD-6: > 3 alerts dismissed in 10 min)
+                if (uiState.suggestRecalibration) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .padding(top = 10.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFFFFF3E0)
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFA000))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "⚠️ Recalibration Suggested",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = Color(0xFFE65100)
+                            )
+                            Text(
+                                text = "${uiState.falseAlertCount} alerts dismissed in 10 minutes. Calibrating again can adapt to changing light or posture.",
+                                fontSize = 12.sp,
+                                color = Color(0xFF5D4037)
+                            )
+                        }
+                    }
+                }
+
+                // Debug Telemetry Panel (shown on long-pressing title)
+                AnimatedVisibility(visible = showDebugPanel) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth(0.95f)
+                            .padding(top = 12.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "Engine & Camera Telemetry",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(text = "FPS: ${"%.1f".format(uiState.fps)}", fontSize = 12.sp)
+                                Text(text = "Inference: ${uiState.inferenceTimeMs}ms", fontSize = 12.sp)
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(text = "EAR L/R: ${"%.3f".format(uiState.faceFrame.earL)} / ${"%.3f".format(uiState.faceFrame.earR)}", fontSize = 12.sp)
+                                Text(text = "MAR: ${"%.3f".format(uiState.faceFrame.mar)}", fontSize = 12.sp)
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(text = "Pitch: ${"%.1f".format(uiState.faceFrame.pitchDeg)}°", fontSize = 12.sp)
+                                Text(text = "State: ${uiState.state.name} (${uiState.level.name})", fontSize = 12.sp)
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "DEMO_TIMERS: ${if (uiState.demoTimers) "ON (3s/5s)" else "OFF (10s/20s)"}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (uiState.demoTimers) Color(0xFFD32F2F) else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Button(
+                                    onClick = { pipeline.toggleDemoTimers() },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Text(text = if (uiState.demoTimers) "Disable" else "Enable", fontSize = 11.sp)
+                                }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "QUICK_CALIB: ${if (uiState.quickCalibration) "ON (5s/2s)" else "OFF (10s/3s)"}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (uiState.quickCalibration) Color(0xFF1976D2) else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Button(
+                                    onClick = { pipeline.toggleQuickCalibration() },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Text(text = if (uiState.quickCalibration) "Disable" else "Enable", fontSize = 11.sp)
+                                }
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(text = "False Alerts (10m): ${uiState.falseAlertCount}", fontSize = 12.sp)
+                                Text(text = "L5 Countdown: ${uiState.l5CountdownSeconds?.let { "${it}s" } ?: "N/A"}", fontSize = 12.sp)
+                            }
+                            if (uiState.smsNotificationStatus != null) {
+                                Text(
+                                    text = "SMS: ${uiState.smsNotificationStatus}",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Bottom Action Section
+        if (isAlert) {
+            // Alert mode: "I'M AWAKE" button at bottom, End Drive is HIDDEN!
             Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 30.dp)
+                    .padding(bottom = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Button(
-                    onClick = onImAwake,
+                    onClick = { pipeline.onImAwake() },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(88.dp),
-                    shape = RoundedCornerShape(24.dp),
+                        .height(72.dp),
+                    shape = RoundedCornerShape(22.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.White,
                         contentColor = Color(0xFFB71C1C)
                     ),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 12.dp)
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 8.dp)
                 ) {
                     Text(
                         text = "I'M AWAKE",
-                        fontSize = 32.sp,
+                        fontSize = 28.sp,
                         fontWeight = FontWeight.Black,
                         letterSpacing = 2.sp
                     )
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "Tap button to stop alarm and cancel SMS",
                     color = Color.White.copy(alpha = 0.9f),
-                    fontSize = 15.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
+                )
+            }
+        } else {
+            // Normal mode: "End Drive" button
+            Button(
+                onClick = onEndDrive,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Text(
+                    text = "End Drive",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onError
                 )
             }
         }
@@ -726,33 +734,41 @@ private fun RedAlertFullScreen(
 
 @Composable
 private fun PreDrivePermissionsRationale(
+    cameraGranted: Boolean,
+    smsGranted: Boolean,
+    locationGranted: Boolean,
     onRequestPermissions: () -> Unit,
+    onContinueAnyway: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = modifier.padding(24.dp),
+        modifier = modifier
+            .padding(24.dp)
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.SpaceBetween,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(top = 32.dp)
+            modifier = Modifier.padding(top = 16.dp)
         ) {
             Text(
-                text = "Pre-Drive Permissions Needed",
+                text = "Pre-Drive Permissions",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Jaagrit requires camera access to monitor driver alertness, and SMS + GPS to notify emergency contacts if you become unresponsive.",
+                text = "Jaagrit requires permissions to protect you on the road. All processing is 100% offline on your device.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -763,23 +779,89 @@ private fun PreDrivePermissionsRationale(
         ) {
             Column(
                 modifier = Modifier.padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text(
-                    text = "Pre-Drive Checklist & Privacy",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "• Camera frames processed in-memory only (never stored)\n" +
-                            "• Zero network/internet usage (100% offline)\n" +
-                            "• Emergency SMS uses cellular radio directly\n" +
-                            "• ⚠️ Pre-drive check: SMS needs mobile signal — airplane mode blocks it (D6)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                // Line 1: Camera
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "📷 Front Camera",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        Text(
+                            text = if (cameraGranted) "Granted ✓" else "Required ⚠️",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (cameraGranted) Color(0xFF2E7D32) else Color(0xFFC62828)
+                        )
+                    }
+                    Text(
+                        text = "Watches eye closure and head posture in memory to estimate alertness.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                // Line 2: SMS
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "💬 Emergency SMS",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        Text(
+                            text = if (smsGranted) "Granted ✓" else "Not granted",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (smsGranted) Color(0xFF2E7D32) else Color(0xFFE65100)
+                        )
+                    }
+                    Text(
+                        text = "Sends an emergency SMS to your contact if you become unresponsive at L5.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                // Line 3: Location
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "📍 Location (GPS)",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        Text(
+                            text = if (locationGranted) "Granted ✓" else "Not granted",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (locationGranted) Color(0xFF2E7D32) else Color(0xFFE65100)
+                        )
+                    }
+                    Text(
+                        text = "Includes your approximate GPS coordinates in the emergency SMS for help.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
+
+        Spacer(modifier = Modifier.height(20.dp))
 
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -789,16 +871,32 @@ private fun PreDrivePermissionsRationale(
                 onClick = onRequestPermissions,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp),
+                    .height(52.dp),
                 shape = RoundedCornerShape(14.dp)
             ) {
-                Text(text = "Grant Pre-Drive Permissions", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(text = "Grant Permissions", fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
+
+            if (cameraGranted) {
+                Button(
+                    onClick = onContinueAnyway,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondary
+                    )
+                ) {
+                    Text(text = "Start Drive Anyway", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+
             OutlinedButton(
                 onClick = onBack,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp),
+                    .height(52.dp),
                 shape = RoundedCornerShape(14.dp)
             ) {
                 Text(text = "Back to Home", fontSize = 16.sp)

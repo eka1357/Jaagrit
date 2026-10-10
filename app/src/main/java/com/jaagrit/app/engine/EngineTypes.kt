@@ -51,7 +51,8 @@ enum class AlertEventType {
     HEAD_DROOP,
     FACE_LOST,
     FACE_RESTORED,
-    ACTION_TRIGGERED
+    ACTION_TRIGGERED,
+    L5_NOT_SENT
 }
 
 data class CompanionQuestion(

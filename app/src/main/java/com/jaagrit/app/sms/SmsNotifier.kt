@@ -24,6 +24,23 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.resume
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.telephony.TelephonyManager
+import com.jaagrit.app.engine.Level
+
+/**
+ * High-level availability states for Emergency SMS (LAD-4, D6, Audit M6.1).
+ * Checklist states: "Emergency SMS: ready / no SIM / no permission / airplane mode"
+ */
+enum class SmsAvailability(val reason: String) {
+    READY("ready"),
+    NO_SIM("no SIM"),
+    NO_PERMISSION("no permission"),
+    AIRPLANE_MODE("airplane mode"),
+    NO_CONTACT("emergency contact not set")
+}
+
 /**
  * Result of attempting to send an L5 emergency SMS (LAD-4, D6).
  */
@@ -46,6 +63,73 @@ class SmsNotifier(
     private val tag = "JAAGRIT"
 
     /**
+     * Checks current readiness of cellular SMS subsystem using TelephonyManager,
+     * permissions, airplane mode settings, and configured emergency contact.
+     */
+    fun checkAvailability(emergencyContact: String? = null): SmsAvailability {
+        val isAirplaneMode = try {
+            Settings.Global.getInt(context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, 0) != 0
+        } catch (_: Exception) {
+            false
+        }
+        val hasSmsPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.SEND_SMS
+        ) == PackageManager.PERMISSION_GRANTED
+        val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+        val simState = telephonyManager?.simState ?: TelephonyManager.SIM_STATE_UNKNOWN
+        val contact = emergencyContact ?: try {
+            kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                settingsStore.getEmergencyContact().trim()
+            }
+        } catch (_: Exception) {
+            ""
+        }
+
+        return evaluateSmsAvailability(
+            isAirplaneMode = isAirplaneMode,
+            hasSmsPermission = hasSmsPermission,
+            simState = simState,
+            emergencyContact = contact
+        )
+    }
+
+    /**
+     * Formats the prepared emergency message body per docs/PHRASES.md Section 3.
+     */
+    suspend fun prepareEmergencyMessage(totalAlerts: Int): String {
+        val driverName = try {
+            settingsStore.getDriverName()
+        } catch (_: Exception) {
+            SettingsStore.DEFAULT_DRIVER_NAME
+        }
+        val timeStr = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
+        val locationStr = getLastKnownLocationString(context)
+        return formatSmsMessage(
+            driverName = driverName,
+            timestamp = timeStr,
+            alertCount = totalAlerts,
+            location = locationStr
+        )
+    }
+
+    /**
+     * Copies the emergency alert message to the system clipboard when SMS delivery is unavailable.
+     */
+    fun copyMessageToClipboard(message: String): Boolean {
+        return try {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            val clip = ClipData.newPlainText("Jaagrit Emergency Alert", message)
+            clipboard?.setPrimaryClip(clip)
+            Log.i(tag, "SmsNotifier: Emergency message copied to clipboard")
+            true
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to copy emergency message to clipboard", e)
+            false
+        }
+    }
+
+    /**
      * Dispatch emergency SMS to configured emergency contact with last known location.
      *
      * Intermediate status: Calls [onStatusUpdate] with "Sending SMS..." before transmission.
@@ -55,46 +139,23 @@ class SmsNotifier(
         totalAlerts: Int,
         onStatusUpdate: ((String) -> Unit)? = null
     ): SmsResult {
+        val availability = checkAvailability()
+        if (availability != SmsAvailability.READY) {
+            val reason = when (availability) {
+                SmsAvailability.AIRPLANE_MODE -> "Airplane mode active (no mobile signal)"
+                SmsAvailability.NO_PERMISSION -> "SEND_SMS permission not granted"
+                SmsAvailability.NO_SIM -> "No SIM card detected"
+                SmsAvailability.NO_CONTACT -> "Emergency contact not configured in Settings"
+                SmsAvailability.READY -> "Unknown error"
+            }
+            Log.w(tag, "SmsNotifier: Emergency SMS blocked ($reason)")
+            return SmsResult.Failure(reason)
+        }
+
         val emergencyContact = settingsStore.getEmergencyContact().trim()
         val maskedNumber = SettingsStore.maskPhoneNumber(emergencyContact)
-
-        if (emergencyContact.isEmpty()) {
-            val reason = "Emergency contact not configured in Settings"
-            Log.w(tag, "SmsNotifier: $reason")
-            return SmsResult.Failure(reason)
-        }
-
-        // 1. Permission check
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
-            val reason = "SEND_SMS permission not granted"
-            Log.w(tag, "SmsNotifier: $reason")
-            return SmsResult.Failure(reason)
-        }
-
-        // 2. Airplane mode check (D6: Show 'not sent' clearly without crashing)
-        val isAirplaneMode = try {
-            Settings.Global.getInt(context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, 0) != 0
-        } catch (e: Exception) {
-            false
-        }
-        if (isAirplaneMode) {
-            val reason = "Airplane mode active (no mobile signal)"
-            Log.w(tag, "SmsNotifier: $reason")
-            return SmsResult.Failure(reason)
-        }
-
-        // 3. Location extraction
         val locationStr = getLastKnownLocationString(context)
-
-        // 4. Build message from PHRASES.md template
-        val driverName = settingsStore.getDriverName()
-        val timeStr = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
-        val messageBody = formatSmsMessage(
-            driverName = driverName,
-            timestamp = timeStr,
-            alertCount = totalAlerts,
-            location = locationStr
-        )
+        val messageBody = prepareEmergencyMessage(totalAlerts)
 
         // Pre-transmission intermediate status: show "Sending SMS..." before confirmation
         val sendingStatus = "Sending SMS to $maskedNumber..."
@@ -274,6 +335,57 @@ class SmsNotifier(
                 }
             } catch (e: Exception) {
                 "unavailable"
+            }
+        }
+
+        /**
+         * Pure logic to evaluate SMS availability from system states.
+         * Hierarchy:
+         * 1. Airplane mode -> AIRPLANE_MODE ("airplane mode")
+         * 2. Permission -> NO_PERMISSION ("no permission")
+         * 3. SIM card state -> NO_SIM ("no SIM")
+         * 4. Emergency contact -> NO_CONTACT ("emergency contact not set")
+         * 5. Ready -> READY ("ready")
+         */
+        fun evaluateSmsAvailability(
+            isAirplaneMode: Boolean,
+            hasSmsPermission: Boolean,
+            simState: Int,
+            emergencyContact: String
+        ): SmsAvailability {
+            return when {
+                isAirplaneMode -> SmsAvailability.AIRPLANE_MODE
+                !hasSmsPermission -> SmsAvailability.NO_PERMISSION
+                simState != TelephonyManager.SIM_STATE_READY -> SmsAvailability.NO_SIM
+                emergencyContact.isBlank() -> SmsAvailability.NO_CONTACT
+                else -> SmsAvailability.READY
+            }
+        }
+
+        /**
+         * Derives honest L5 status text for the UI based on real SmsResult and availability.
+         * Rule 1: Never show "sent" or "dispatched" unless RESULT_OK is confirmed.
+         * Rule 3: If SMS is unavailable, no countdown; show "Emergency SMS unavailable (reason)".
+         */
+        fun formatL5StatusLabel(
+            level: Level,
+            l5CountdownSeconds: Int?,
+            smsNotificationStatus: String?,
+            smsAvailability: SmsAvailability
+        ): String? {
+            if (level != Level.L5 && l5CountdownSeconds == null && smsNotificationStatus == null) {
+                return null
+            }
+
+            if (smsAvailability != SmsAvailability.READY) {
+                return "Emergency SMS unavailable (${smsAvailability.reason})"
+            }
+
+            return when {
+                smsNotificationStatus != null -> smsNotificationStatus
+                l5CountdownSeconds != null -> "Emergency SMS in ${l5CountdownSeconds}s (tap to cancel)"
+                level == Level.L5 -> "Sending SMS..."
+                else -> null
             }
         }
     }

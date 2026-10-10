@@ -36,6 +36,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jaagrit.app.data.BaselineStore
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.jaagrit.app.data.SettingsStore
+import com.jaagrit.app.sms.SmsAvailability
+import com.jaagrit.app.sms.SmsNotifier
+
 @Composable
 fun HomeScreen(
     onStartDrive: () -> Unit,
@@ -46,6 +61,32 @@ fun HomeScreen(
     val context = LocalContext.current
     val baselineStore = remember { BaselineStore(context) }
     val baseline by baselineStore.baselineFlow.collectAsState(initial = null)
+    val settingsStore = remember { SettingsStore(context) }
+    val smsNotifier = remember { SmsNotifier(context, settingsStore) }
+    val emergencyContact by settingsStore.emergencyContactFlow.collectAsState(initial = "")
+
+    var resumeTick by remember { mutableStateOf(0) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                resumeTick++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val hasCamera = remember(resumeTick) {
+        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+    }
+    val hasLocation = remember(resumeTick) {
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    }
+    val smsAvailability = remember(resumeTick, emergencyContact) {
+        smsNotifier.checkAvailability()
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize()
@@ -54,7 +95,8 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(24.dp),
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -143,7 +185,9 @@ fun HomeScreen(
                 }
             }
 
-            // Info Card
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Drive Readiness Checklist Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -156,17 +200,97 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "Privacy & Safety",
+                        text = "Drive Readiness Checklist",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.Bold
                     )
+
+                    // Line 1: Camera
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Camera",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = if (hasCamera) "ready" else "permission needed",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (hasCamera) Color(0xFF2E7D32) else Color(0xFFE65100)
+                        )
+                    }
+
+                    // Line 2: Emergency SMS (Prompt requirement 3: ready / no SIM / no permission / airplane mode)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Emergency SMS",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = smsAvailability.reason,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (smsAvailability == SmsAvailability.READY) Color(0xFF2E7D32) else Color(0xFFE65100)
+                        )
+                    }
+
+                    // Line 3: Location (GPS)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Location (GPS)",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = if (hasLocation) "ready" else "permission needed",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (hasLocation) Color(0xFF2E7D32) else Color(0xFFE65100)
+                        )
+                    }
+
+                    // Line 4: Emergency Contact
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Emergency Contact",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = if (emergencyContact.isNotBlank()) SettingsStore.maskPhoneNumber(emergencyContact) else "not set in Settings",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (emergencyContact.isNotBlank()) Color(0xFF2E7D32) else Color(0xFFE65100)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "• 100% on-device processing\n• No camera frames or voice recordings stored\n• Works completely offline with zero internet access",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = "🔒 100% on-device & offline • Cellular SMS radio only",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.outline
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Action Buttons
             Column(
