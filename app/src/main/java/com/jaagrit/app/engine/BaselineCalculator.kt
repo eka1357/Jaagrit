@@ -148,10 +148,10 @@ object BaselineCalculator {
      * A blink is identified as a dip below the eye closure threshold lasting between 80ms and 500ms.
      */
     fun computeBlinkRate(frames: List<FaceFrame>, threshold: Float): Float {
-        if (frames.size < 5) return 16.0f // sensible default: ~16 blinks/min
+        if (frames.size < 5) return Config.DEFAULT_BASELINE_BLINK_RATE
 
         val durationMs = frames.last().tsMs - frames.first().tsMs
-        if (durationMs <= 1000L) return 16.0f
+        if (durationMs <= Config.MIN_BLINK_CALCULATION_DURATION_MS) return Config.DEFAULT_BASELINE_BLINK_RATE
 
         var blinkCount = 0
         var isUnderThreshold = false
@@ -166,8 +166,8 @@ object BaselineCalculator {
             } else {
                 if (isUnderThreshold) {
                     val closureDuration = frame.tsMs - dipStartMs
-                    // Valid natural blink is typically between 80ms and 500ms
-                    if (closureDuration in 80L..500L) {
+                    // Valid natural blink is typically between 80ms and 500ms (Config.BLINK_DURATION_MIN_MS..Config.BLINK_DURATION_MAX_MS)
+                    if (closureDuration in Config.BLINK_DURATION_MIN_MS..Config.BLINK_DURATION_MAX_MS) {
                         blinkCount++
                     }
                     isUnderThreshold = false
@@ -177,8 +177,8 @@ object BaselineCalculator {
 
         // Convert count over duration to blinks per minute
         val minutes = durationMs / 60000.0f
-        val rate = if (minutes > 0f) blinkCount / minutes else 16.0f
+        val rate = if (minutes > 0f) blinkCount / minutes else Config.DEFAULT_BASELINE_BLINK_RATE
         // Clamp to sensible human bounds [5, 45] blinks per min
-        return rate.coerceIn(5.0f, 45.0f)
+        return rate.coerceIn(Config.BLINK_RATE_CLAMP_MIN, Config.BLINK_RATE_CLAMP_MAX)
     }
 }

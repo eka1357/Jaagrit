@@ -173,7 +173,7 @@ object FeatureExtractor {
         val dy = chin.y - forehead.y
         val dz = chin.z - forehead.z
         val pitchRad = atan2(dz, if (dy > 1e-4f) dy else 1e-4f)
-        val pitchDeg = (pitchRad * 180.0 / Math.PI).toFloat() * 1.5f // Scaled to degree space
+        val pitchDeg = (pitchRad * 180.0 / Math.PI).toFloat() * Config.HEAD_PITCH_GEOMETRIC_SCALE // Scaled to degree space
 
         // Yaw: Left vs Right tragus depth difference.
         val dxTragus = rightTragus.x - leftTragus.x
