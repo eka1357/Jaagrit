@@ -194,3 +194,16 @@ Score starts at 100 and subtracts weighted penalties from five signals:
 | **M12** | P2 extras (optional) | GemmaCompanion or WhisperInput (behind interfaces; cut-first) |
 
 Full milestone sequence: M0, M1, M2, M3, M4a, M4b, M5, M6, M7, M8, M9a, M9b1, M9b2, M10, M11a, M11b, M12.
+
+---
+
+## D17 — Voice commands & microphone isolation during active alerts (M8)
+
+- **Push-to-talk only:** Speech recognition is triggered solely via the "Ask Jaagrit" push-to-talk button with a 6-second timeout. Always-on listening is avoided to preserve battery, CPU, and privacy.
+- **Button fallback first:** 4 on-screen buttons (Drive time, Alertness, Alerts today, Last alert) are always available in the UI when not in alert state.
+- **Microphone isolation during active alerts (L3+):**
+  During any active alert (L3, L4, or L5), the microphone is never opened.
+  The loud alarm siren and spoken prompt would be picked up by the microphone and garble or cause false speech recognition.
+  Therefore, a voice reply must not count as an alert response in this milestone.
+- **TODO (M9+):** Evaluate Acoustic Echo Cancellation (AEC) or silence-first listening windows if voice dismissal of L3 alarms is desired. In M8, the "I'M AWAKE" button remains the sole deterministic dismissal path for active alerts.
+

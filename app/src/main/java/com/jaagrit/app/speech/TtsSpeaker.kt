@@ -29,7 +29,7 @@ class TtsSpeaker(private val context: Context) : TextToSpeech.OnInitListener {
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
-            val hindiLocale = Locale("hi", "IN")
+            val hindiLocale = Locale.forLanguageTag("hi-IN")
             val langResult = tts?.isLanguageAvailable(hindiLocale) ?: TextToSpeech.LANG_NOT_SUPPORTED
 
             isHindiAvailable = langResult != TextToSpeech.LANG_MISSING_DATA &&
@@ -68,7 +68,7 @@ class TtsSpeaker(private val context: Context) : TextToSpeech.OnInitListener {
         }
 
         val targetLocale = if (lang == Lang.HI && isHindiAvailable) {
-            Locale("hi", "IN")
+            Locale.forLanguageTag("hi-IN")
         } else {
             Locale.US
         }

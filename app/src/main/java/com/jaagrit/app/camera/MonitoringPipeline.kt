@@ -28,11 +28,24 @@ import com.jaagrit.app.platform.VibeManager
 import com.jaagrit.app.sms.SmsAvailability
 import com.jaagrit.app.sms.SmsNotifier
 import com.jaagrit.app.sms.SmsResult
+import android.content.res.Configuration
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.annotation.StringRes
+import androidx.core.content.ContextCompat
+import com.jaagrit.app.R
+import com.jaagrit.app.speech.DriverIntent
+import com.jaagrit.app.speech.IntentParser
+import com.jaagrit.app.speech.SpeechInput
 import com.jaagrit.app.speech.TtsSpeaker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import java.util.Locale
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,8 +76,15 @@ data class MonitoringUiState(
     val falseAlertCount: Int = 0,
     val suggestRecalibration: Boolean = false,
     val demoTimers: Boolean = false,
-    val quickCalibration: Boolean = false
+    val quickCalibration: Boolean = false,
+    val voiceAnswerText: String? = null,
+    val isListening: Boolean = false,
+    val lastRecognizedText: String? = null,
+    val lastMatchedIntent: com.jaagrit.app.speech.DriverIntent? = null,
+    val recognitionLatencyMs: Long? = null
 ) {
+    val isAlert: Boolean
+        get() = level >= Level.L3 || isRedFlashActive
     val driveTimeFormatted: String
         get() {
             val totalSeconds = (driveTimeMs / 1000).coerceAtLeast(0L)
@@ -297,6 +317,7 @@ class MonitoringPipeline(
         alarmToneGenerator.release()
         familyClipPlayer.release()
         vibeManager.cancel()
+        answerDismissJob?.cancel()
         speaker.shutdown()
         cameraController.release()
     }
@@ -536,5 +557,168 @@ class MonitoringPipeline(
                 Log.i(tag, "Room DB: Logged AlertEvent (level=$level, duration=${duration}ms, response=$responseType)")
             }
         }
+    }
+
+    // --- M8 Voice Commands & Button Fallback (VOI-2, VOI-3) ---
+
+    private var answerDismissJob: Job? = null
+
+    private fun getLocalizedString(@StringRes id: Int, vararg formatArgs: Any): String {
+        val lang = runBlocking { settingsStore.getAppLanguage() }
+        val locale = if (lang == "hi") Locale.forLanguageTag("hi-IN") else Locale.US
+        val conf = Configuration(context.resources.configuration).apply {
+            setLocale(locale)
+        }
+        val localizedContext = context.createConfigurationContext(conf)
+        return localizedContext.getString(id, *formatArgs)
+    }
+
+    /**
+     * Executes a [DriverIntent] triggered by voice recognition or on-screen fallback button.
+     * Guaranteed to use real data from Room [TripRepository] and engine state.
+     */
+    fun executeIntent(intent: DriverIntent, onNavigateToCalibration: (() -> Unit)? = null) {
+        if (_uiState.value.isAlert || _uiState.value.level >= Level.L3) {
+            Log.w(tag, "Intent execution blocked during active alert (D17)")
+            return
+        }
+
+        dbScope.launch {
+            when (intent) {
+                DriverIntent.DRIVE_TIME -> {
+                    val driveTimeMs = currentTripId?.let { tripRepository.getDriveTimeSoFarMs(it) }
+                        ?: (clock.nowMs() - driveStartTimeMs)
+                    val totalMinutes = (driveTimeMs / 60000L).coerceAtLeast(0L)
+                    val hours = totalMinutes / 60
+                    val minutes = totalMinutes % 60
+                    val answer = getLocalizedString(R.string.voice_ans_drive_time, hours, minutes)
+                    deliverAnswer(answer)
+                }
+                DriverIntent.ALERTNESS -> {
+                    val score = _uiState.value.alertness
+                    val stateRes = when (_uiState.value.state) {
+                        DriverState.NORMAL -> R.string.state_normal
+                        DriverState.CAUTION -> R.string.state_caution
+                        DriverState.FATIGUED -> R.string.state_fatigued
+                        DriverState.CRITICAL -> R.string.state_critical
+                        DriverState.FACE_LOST -> R.string.state_face_lost
+                        DriverState.CALIBRATING -> R.string.state_calibrating
+                    }
+                    val stateWord = getLocalizedString(stateRes)
+                    val answer = getLocalizedString(R.string.voice_ans_alertness, score, stateWord)
+                    deliverAnswer(answer)
+                }
+                DriverIntent.ALERT_COUNT -> {
+                    val countToday = tripRepository.getAlertCountToday()
+                    val answer = if (countToday == 0) {
+                        getLocalizedString(R.string.voice_ans_alert_count_zero)
+                    } else {
+                        getLocalizedString(R.string.voice_ans_alert_count, countToday)
+                    }
+                    deliverAnswer(answer)
+                }
+                DriverIntent.LAST_ALERT -> {
+                    val lastAlertWallMs = tripRepository.getLastAlertTime(currentTripId)
+                    val answer = if (lastAlertWallMs == null || lastAlertWallMs <= 0L) {
+                        getLocalizedString(R.string.voice_ans_alert_count_zero)
+                    } else {
+                        val diffMinutes = ((System.currentTimeMillis() - lastAlertWallMs) / 60000L).coerceAtLeast(0L)
+                        if (diffMinutes < 1) {
+                            getLocalizedString(R.string.voice_ans_last_alert_now)
+                        } else {
+                            getLocalizedString(R.string.voice_ans_last_alert, diffMinutes)
+                        }
+                    }
+                    deliverAnswer(answer)
+                }
+                DriverIntent.RECALIBRATE -> {
+                    val answer = getLocalizedString(R.string.voice_ans_recalibrate)
+                    deliverAnswer(answer)
+                    delay(1200L)
+                    withContext(Dispatchers.Main) {
+                        onNavigateToCalibration?.invoke()
+                    }
+                }
+                DriverIntent.DISMISS -> {
+                    Log.i(tag, "Driver requested DISMISS - logged (companion arrives in M9)")
+                }
+                DriverIntent.UNKNOWN -> {
+                    val answer = getLocalizedString(R.string.voice_ans_say_again)
+                    deliverAnswer(answer)
+                }
+            }
+        }
+    }
+
+    private fun deliverAnswer(answer: String) {
+        answerDismissJob?.cancel()
+        _uiState.update { it.copy(voiceAnswerText = answer) }
+
+        val lang = runBlocking { settingsStore.getAppLanguage() }
+        val speechLang = if (lang == "hi") Lang.HI else Lang.EN
+        speaker.speak(answer, speechLang, urgent = false)
+
+        answerDismissJob = scope.launch {
+            delay(4000L)
+            _uiState.update { if (it.voiceAnswerText == answer) it.copy(voiceAnswerText = null) else it }
+        }
+    }
+
+    /**
+     * Push-to-talk handler for the "Ask Jaagrit" button.
+     * Enforces mic isolation during L3+ alerts (D17).
+     */
+    fun startPushToTalk(speechInput: SpeechInput, onNavigateToCalibration: (() -> Unit)? = null) {
+        if (_uiState.value.isAlert || _uiState.value.level >= Level.L3) {
+            Log.w(tag, "Microphone access blocked during active L3+ alert (D17)")
+            return
+        }
+
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            Log.w(tag, "Microphone access blocked: RECORD_AUDIO permission not granted")
+            val answer = getLocalizedString(R.string.status_permission_needed)
+            deliverAnswer(answer)
+            return
+        }
+
+        speaker.stop()
+        _uiState.update { it.copy(isListening = true) }
+        val startTimeMs = clock.nowMs()
+
+        val lang = runBlocking { settingsStore.getAppLanguage() }
+        val langCode = if (lang == "hi") "hi-IN" else "en-IN"
+
+        speechInput.startListening(
+            languageCode = langCode,
+            onResult = { spokenText ->
+                val latency = clock.nowMs() - startTimeMs
+                val intent = IntentParser.parse(spokenText)
+                Log.i(tag, "Speech recognition output: '$spokenText' -> $intent (${latency}ms)")
+                _uiState.update {
+                    it.copy(
+                        isListening = false,
+                        lastRecognizedText = spokenText,
+                        lastMatchedIntent = intent,
+                        recognitionLatencyMs = latency
+                    )
+                }
+                executeIntent(intent, onNavigateToCalibration)
+            },
+            onError = { error ->
+                Log.w(tag, "Speech recognition error: $error")
+                _uiState.update {
+                    it.copy(
+                        isListening = false,
+                        lastRecognizedText = if (it.lastRecognizedText == null) "[Error: $error]" else it.lastRecognizedText
+                    )
+                }
+                executeIntent(DriverIntent.UNKNOWN, onNavigateToCalibration)
+            }
+        )
+    }
+
+    fun cancelPushToTalk(speechInput: SpeechInput) {
+        speechInput.cancel()
+        _uiState.update { it.copy(isListening = false) }
     }
 }

@@ -143,6 +143,9 @@ class MainActivity : ComponentActivity() {
                             MonitoringScreen(
                                 onEndDrive = {
                                     navController.popBackStack()
+                                },
+                                onNavigateToCalibration = {
+                                    navController.navigate("calibration")
                                 }
                             )
                         }

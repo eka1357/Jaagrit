@@ -2,6 +2,8 @@ package com.jaagrit.app.ui.home
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
+import android.speech.SpeechRecognizer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -97,6 +99,23 @@ fun HomeScreen(
     }
     val smsAvailability = remember(resumeTick, emergencyContact) {
         smsNotifier.checkAvailability()
+    }
+    val voiceStatus = remember(resumeTick) {
+        val hasAudio = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        if (!hasAudio) {
+            VoiceStatus.PERMISSION_NEEDED
+        } else {
+            val onDeviceAvailable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+            } else {
+                SpeechRecognizer.isRecognitionAvailable(context)
+            }
+            if (onDeviceAvailable) {
+                VoiceStatus.READY
+            } else {
+                VoiceStatus.OFFLINE_PACK_MISSING
+            }
+        }
     }
 
     if (showUncalibratedDialog) {
@@ -379,7 +398,44 @@ fun HomeScreen(
                         )
                     }
 
-                    // Line 4: Emergency Contact
+                    // Line 4: Voice Commands (M8)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_mic),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.checklist_voice),
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        val (voiceStatusText, voiceColor) = when (voiceStatus) {
+                            VoiceStatus.READY -> Pair(stringResource(R.string.status_ready), Color(0xFF2E7D32))
+                            VoiceStatus.PERMISSION_NEEDED -> Pair(stringResource(R.string.status_permission_needed), Color(0xFFE65100))
+                            VoiceStatus.OFFLINE_PACK_MISSING -> Pair(stringResource(R.string.status_offline_pack_missing), Color(0xFFE65100))
+                        }
+
+                        Text(
+                            text = voiceStatusText,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = voiceColor
+                        )
+                    }
+
+                    // Line 5: Emergency Contact
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -529,4 +585,10 @@ fun HomeScreen(
             }
         }
     }
+}
+
+private enum class VoiceStatus {
+    READY,
+    PERMISSION_NEEDED,
+    OFFLINE_PACK_MISSING
 }
