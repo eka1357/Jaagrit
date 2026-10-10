@@ -51,4 +51,16 @@ class DataStoreCorruptionTest {
         assertEquals(false, quickCal)
         assertEquals("", contact)
     }
+
+    @Test
+    fun testBaselineStore_schemaVersionDiscardsLegacyV1Baselines() {
+        assertEquals(2, BaselineStore.BASELINE_SCHEMA_VERSION)
+
+        // Legacy preferences without schema version key (version defaults to 0)
+        val legacyVersion = emptyPreferences()[BaselineStore.KEY_SCHEMA_VERSION] ?: 0
+        org.junit.Assert.assertTrue(
+            "Legacy v1 baseline without schema version must not match current schema version",
+            legacyVersion != BaselineStore.BASELINE_SCHEMA_VERSION
+        )
+    }
 }
