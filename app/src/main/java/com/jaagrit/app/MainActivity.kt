@@ -1,8 +1,12 @@
 package com.jaagrit.app
 
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.res.Configuration
+import android.content.res.Resources
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
@@ -27,14 +31,32 @@ import com.jaagrit.app.ui.theme.LocalAppLanguage
 import kotlinx.coroutines.launch
 import java.util.Locale
 
+/**
+ * Custom ContextWrapper that delegates to the underlying Activity (baseContext)
+ * while overriding getResources() to return the localized resources.
+ * This preserves the Activity reference chain (findActivity(), baseContext traversal)
+ * and allows ActivityResultRegistryOwner lookup without breaking Compose.
+ */
+private class LocalizedContextWrapper(
+    base: Context,
+    private val localizedConfiguration: Configuration
+) : ContextWrapper(base) {
+    private val localizedResources: Resources by lazy {
+        base.createConfigurationContext(localizedConfiguration).resources
+    }
+
+    override fun getResources(): Resources {
+        return localizedResources
+    }
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            val context = LocalContext.current
             val coroutineScope = rememberCoroutineScope()
-            val settingsStore = remember { SettingsStore(context.applicationContext) }
+            val settingsStore = remember { SettingsStore(applicationContext) }
             val language by settingsStore.appLanguageFlow.collectAsState(initial = SettingsStore.DEFAULT_LANGUAGE)
             val isHindi = language != "en"
 
@@ -50,8 +72,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            val localizedContext = remember(context, currentLocale) {
-                context.createConfigurationContext(localizedConfiguration)
+            val localizedContext = remember(this@MainActivity, localizedConfiguration) {
+                LocalizedContextWrapper(this@MainActivity, localizedConfiguration)
             }
 
             SideEffect {
@@ -67,6 +89,7 @@ class MainActivity : ComponentActivity() {
             CompositionLocalProvider(
                 LocalConfiguration provides localizedConfiguration,
                 LocalContext provides localizedContext,
+                LocalActivityResultRegistryOwner provides this@MainActivity,
                 LocalAppLanguage provides language
             ) {
                 JaagritTheme(isHindi = isHindi) {
