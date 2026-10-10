@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.camera.view.PreviewView
 import androidx.lifecycle.LifecycleOwner
 import com.jaagrit.app.audio.FamilyClipPlayer
+import com.jaagrit.app.audio.PlanBAudioPlayer
 import com.jaagrit.app.data.BaselineStore
 import com.jaagrit.app.data.JaagritDatabase
 import com.jaagrit.app.data.SettingsStore
@@ -28,6 +29,7 @@ import com.jaagrit.app.platform.VibeManager
 import com.jaagrit.app.sms.SmsAvailability
 import com.jaagrit.app.sms.SmsNotifier
 import com.jaagrit.app.sms.SmsResult
+import com.jaagrit.app.speech.Phrases
 import com.jaagrit.app.speech.TtsSpeaker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -97,6 +99,7 @@ class MonitoringPipeline(
     private val familyClipPlayer: FamilyClipPlayer = FamilyClipPlayer(context) { phrase ->
         speaker.speak(phrase, Lang.HI, urgent = true)
     },
+    val planBAudioPlayer: PlanBAudioPlayer = PlanBAudioPlayer(context),
     private val smsNotifier: SmsNotifier = SmsNotifier(context, settingsStore),
     initialConfig: Config = Config.DEFAULT,
     val clock: Clock = Clock { SystemClock.elapsedRealtime() },
@@ -157,6 +160,7 @@ class MonitoringPipeline(
         cameraController.stopCamera()
         alarmToneGenerator.stopAlarm()
         familyClipPlayer.stop()
+        planBAudioPlayer.stop()
         vibeManager.cancel()
         speaker.stop()
     }
@@ -270,6 +274,7 @@ class MonitoringPipeline(
         // Immediate physical silencing for instant tactile/auditory feedback
         alarmToneGenerator.stopAlarm()
         familyClipPlayer.stop()
+        planBAudioPlayer.stop()
         vibeManager.cancel()
         speaker.stop()
 
@@ -339,6 +344,7 @@ class MonitoringPipeline(
         }
         alarmToneGenerator.release()
         familyClipPlayer.release()
+        planBAudioPlayer.release()
         vibeManager.cancel()
         speaker.shutdown()
         cameraController.release()
@@ -401,6 +407,7 @@ class MonitoringPipeline(
         if (!isAlertActive && _uiState.value.isRedFlashActive) {
             alarmToneGenerator.stopAlarm()
             familyClipPlayer.stop()
+            planBAudioPlayer.stop()
             vibeManager.cancel()
             l5NotSentLoggedForEpisode = false
             // If alert resolved without explicit awake/eyesOpen/voice, mark as dismissed
@@ -497,7 +504,15 @@ class MonitoringPipeline(
                 }
                 is Action.Speak -> {
                     Log.d(tag, "Action.Speak triggered (urgent=${action.urgent}): ${action.text}")
-                    speaker.speak(action.text, action.lang, action.urgent)
+                    if (action.urgent) {
+                        val phraseIndex = Phrases.L3_ALERTS.indexOf(action.text).let { if (it >= 0) it + 1 else 1 }
+                        val played = planBAudioPlayer.play(phraseIndex)
+                        if (!played) {
+                            speaker.speak(action.text, action.lang, action.urgent)
+                        }
+                    } else {
+                        speaker.speak(action.text, action.lang, action.urgent)
+                    }
                 }
                 is Action.PlayFamilyClip -> {
                     Log.i(tag, "Action.PlayFamilyClip triggered: ${action.index}")

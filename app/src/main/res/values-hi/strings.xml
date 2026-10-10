@@ -28,12 +28,16 @@
     <string name="checklist_sms">आपातकालीन एसएमएस</string>
     <string name="checklist_location">लोकेशन (जीपीएस)</string>
     <string name="checklist_contact">आपातकालीन संपर्क</string>
+    <string name="checklist_offline_voice">ऑफलाइन आवाज़ (हिंदी)</string>
     <string name="status_ready">तैयार</string>
+    <string name="status_checking">जाँच जारी…</string>
     <string name="status_permission_needed">अनुमति चाहिए</string>
     <string name="status_no_sim">सिम कार्ड नहीं है</string>
     <string name="status_airplane_mode">हवाई मोड चालू है</string>
     <string name="status_contact_not_set">सेटिंग्स में सेट नहीं है</string>
+    <string name="status_voice_missing">TTS में डाउनलोड करें</string>
     <string name="notice_sms_cellular">आपातकालीन एसएमएस के लिए मोबाइल सिग्नल ज़रूरी है — हवाई मोड में एसएमएस नहीं जाएगा</string>
+    <string name="notice_offline_voice_missing">ऑफलाइन हिंदी आवाज़ नहीं मिली — अलर्ट के लिए एंड्रॉइड TTS सेटिंग्स में आवाज़ डाउनलोड करें</string>
     <string name="notice_offline_guarantee">100% ऑन-डिवाइस और ऑफ़लाइन • केवल मोबाइल नेटवर्क</string>
     <string name="btn_start_drive">ड्राइव शुरू करें</string>
     <string name="btn_calibrate">प्रोफ़ाइल कैलिब्रेट करें</string>

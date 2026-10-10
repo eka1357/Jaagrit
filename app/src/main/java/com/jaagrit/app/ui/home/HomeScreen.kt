@@ -29,11 +29,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.jaagrit.app.speech.VoiceReadinessChecker
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -97,6 +99,12 @@ fun HomeScreen(
     }
     val smsAvailability = remember(resumeTick, emergencyContact) {
         smsNotifier.checkAvailability()
+    }
+    var isOfflineHindiVoiceAvailable by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(resumeTick) {
+        VoiceReadinessChecker.checkOfflineHindiAvailability(context) { available ->
+            isOfflineHindiVoiceAvailable = available
+        }
     }
 
     if (showUncalibratedDialog) {
@@ -409,7 +417,67 @@ fun HomeScreen(
                         )
                     }
 
+                    // Line 5: Offline Voice (Hindi) (AUDIT-020)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_voice),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.checklist_offline_voice),
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        val voiceReady = isOfflineHindiVoiceAvailable == true
+                        val voiceStatusText = when (isOfflineHindiVoiceAvailable) {
+                            null -> stringResource(R.string.status_checking)
+                            true -> stringResource(R.string.status_ready)
+                            false -> stringResource(R.string.status_voice_missing)
+                        }
+
+                        Text(
+                            text = voiceStatusText,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (voiceReady) Color(0xFF2E7D32) else Color(0xFFE65100)
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(2.dp))
+
+                    if (isOfflineHindiVoiceAvailable == false) {
+                        Row(
+                            verticalAlignment = Alignment.Top,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_warning),
+                                contentDescription = null,
+                                tint = Color(0xFFE65100),
+                                modifier = Modifier
+                                    .size(14.dp)
+                                    .padding(top = 2.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.notice_offline_voice_missing),
+                                fontSize = 11.sp,
+                                color = Color(0xFFE65100),
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
 
                     Row(
                         verticalAlignment = Alignment.Top,
