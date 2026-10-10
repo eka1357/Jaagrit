@@ -72,6 +72,14 @@ class BaselineStore(private val context: Context) {
         return baselineFlow.first()
     }
 
+    /**
+     * Checks whether a saved baseline exists in DataStore with the current schema version and isValid == true.
+     */
+    suspend fun hasSavedBaselineWithCurrentSchema(): Boolean {
+        val baseline = getBaseline()
+        return baseline != null && baseline.isValid
+    }
+
     suspend fun saveBaseline(baseline: Baseline) {
         context.dataStore.edit { prefs ->
             prefs[KEY_SCHEMA_VERSION] = BASELINE_SCHEMA_VERSION

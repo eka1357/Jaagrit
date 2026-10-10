@@ -208,7 +208,6 @@ fun HomeScreen(
                 OutlinedButton(
                     onClick = {
                         showUncalibratedDialog = false
-                        onStartDrive()
                     },
                     border = BorderStroke(1.dp, HorizonMuted),
                     colors = ButtonDefaults.outlinedButtonColors(
@@ -216,7 +215,7 @@ fun HomeScreen(
                     )
                 ) {
                     Text(
-                        text = stringResource(R.string.dialog_btn_start_defaults),
+                        text = stringResource(R.string.dialog_btn_cancel),
                         fontFamily = MuktaFontFamily
                     )
                 }

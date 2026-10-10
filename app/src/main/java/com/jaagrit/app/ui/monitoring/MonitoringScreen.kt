@@ -69,7 +69,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.jaagrit.app.data.BaselineStore
 import com.jaagrit.app.R
 import com.jaagrit.app.camera.MonitoringPipeline
 import com.jaagrit.app.engine.DriverState
@@ -87,6 +89,14 @@ fun MonitoringScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val baselineStore = remember { BaselineStore(context) }
+
+    // Ensure driver never silently runs on uncalibrated or outdated baseline (AUDIT-022)
+    LaunchedEffect(Unit) {
+        if (!baselineStore.hasSavedBaselineWithCurrentSchema()) {
+            onNavigateToCalibration()
+        }
+    }
 
     // Keep screen awake and force max brightness while monitoring (UI-4)
     DisposableEffect(Unit) {

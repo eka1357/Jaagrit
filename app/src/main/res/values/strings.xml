@@ -60,10 +60,10 @@
     <string name="btn_trip_history">Trip History &amp; Logs</string>
 
     <!-- Uncalibrated Dialog -->
-    <string name="dialog_uncalibrated_title">Calibrate Driver Profile?</string>
-    <string name="dialog_uncalibrated_body">Calibrating takes about 15 seconds and tailors eye and blink thresholds to your face, reducing false alerts.</string>
+    <string name="dialog_uncalibrated_title">Calibration Required</string>
+    <string name="dialog_uncalibrated_body">A calibrated profile matching the current app version is required before starting a drive. Calibration takes about 15 seconds to customize eye thresholds to your face.</string>
     <string name="dialog_btn_calibrate_now">Calibrate Now</string>
-    <string name="dialog_btn_start_defaults">Start with Defaults</string>
+    <string name="dialog_btn_cancel">Cancel</string>
 
     <!-- Monitoring Screen -->
     <string name="monitoring_title">Driving Alertness Monitor</string>
