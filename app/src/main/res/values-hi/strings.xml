@@ -109,6 +109,9 @@
     <string name="calib_btn_saving">सेव हो रहा है...</string>
     <string name="calib_result_fail_title">कैलिब्रेशन ठीक से नहीं हुआ</string>
     <string name="calib_result_fail_sub">आँखों के खुलने और बंद होने का अंतर बहुत कम है (%s &lt; 0.05)</string>
+    <string name="calib_fail_no_closed_frames">बंद आँखों के फ्रेम नहीं मिले। कृपया चरण 2 में आँखें बंद रखें।</string>
+    <string name="calib_fail_insufficient_open_frames">खुली आँख के पर्याप्त फ्रेम नहीं हैं (%d &lt; 15)। चेहरा कैमरे के सामने रखें।</string>
+    <string name="calib_fail_insufficient_closed_frames">बंद आँख के पर्याप्त फ्रेम नहीं हैं (%d &lt; 15)। आँखें बंद करके चेहरा सामने रखें।</string>
     <string name="calib_result_fail_desc">उचित रोशनी और चेहरे का कोण सुनिश्चित करें, या धूप का चश्मा हटाएँ।</string>
     <string name="calib_btn_retry">दोबारा कैलिब्रेट करें</string>
     <string name="calib_footer_privacy">सभी आँकड़ों में मध्यिका का उपयोग • कोई फोटो या आवाज़ स्टोर नहीं होती</string>

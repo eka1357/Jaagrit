@@ -109,6 +109,9 @@
     <string name="calib_btn_saving">Saving...</string>
     <string name="calib_result_fail_title">Calibration Incomplete</string>
     <string name="calib_result_fail_sub">Eye Separation Gap Too Small (%s &lt; 0.05)</string>
+    <string name="calib_fail_no_closed_frames">No closed-eye frames detected. Please keep eyes closed during step 2.</string>
+    <string name="calib_fail_insufficient_open_frames">Insufficient open-eye frames (%d &lt; 15). Keep your face centered in the camera.</string>
+    <string name="calib_fail_insufficient_closed_frames">Insufficient closed-eye frames (%d &lt; 15). Keep your face in view with eyes closed.</string>
     <string name="calib_result_fail_desc">Ensure proper lighting and face angle, and remove dark sunglasses if wearing them.</string>
     <string name="calib_btn_retry">Retry Calibration</string>
     <string name="calib_footer_privacy">Medians are used across all metrics • No frames or audio are stored</string>

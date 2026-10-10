@@ -162,6 +162,7 @@ fun CalibrationScreen(
     var mathStartTimeMs by remember { mutableLongStateOf(0L) }
 
     var computedBaseline by remember { mutableStateOf<Baseline?>(null) }
+    var validationResult by remember { mutableStateOf<CalibrationValidationResult?>(null) }
     var isSaving by remember { mutableStateOf(false) }
 
     // Collect frames continuously during calibration
@@ -227,8 +228,9 @@ fun CalibrationScreen(
                         closedFrames, closedPhaseStartMs,
                         yawnFrames, yawnPhaseStartMs,
                         mathLatencyMs, config
-                    ) { result ->
+                    ) { result, validation ->
                         computedBaseline = result
+                        validationResult = validation
                         currentStep = CalibrationStep.RESULT
                     }
                 }
@@ -442,8 +444,9 @@ fun CalibrationScreen(
                                     closedFrames, closedPhaseStartMs,
                                     yawnFrames, yawnPhaseStartMs,
                                     mathLatencyMs, config
-                                ) { result ->
+                                ) { result, validation ->
                                     computedBaseline = result
+                                    validationResult = validation
                                     currentStep = CalibrationStep.RESULT
                                 }
                             },
@@ -454,8 +457,9 @@ fun CalibrationScreen(
                                     closedFrames, closedPhaseStartMs,
                                     yawnFrames, yawnPhaseStartMs,
                                     mathLatencyMs, config
-                                ) { result ->
+                                ) { result, validation ->
                                     computedBaseline = result
+                                    validationResult = validation
                                     currentStep = CalibrationStep.RESULT
                                 }
                             }
@@ -465,6 +469,7 @@ fun CalibrationScreen(
                         computedBaseline?.let { baseline ->
                             ResultCard(
                                 baseline = baseline,
+                                validationResult = validationResult,
                                 onSaveAndProceed = {
                                     scope.launch {
                                         isSaving = true
@@ -478,6 +483,8 @@ fun CalibrationScreen(
                                     closedFrames.clear()
                                     yawnFrames.clear()
                                     mathLatencyMs = 0L
+                                    computedBaseline = null
+                                    validationResult = null
                                     currentStep = CalibrationStep.LOOK_NORMAL
                                 },
                                 isSaving = isSaving
@@ -507,7 +514,7 @@ private fun finishCalibration(
     yawnStartMs: Long,
     latencyMs: Long,
     config: Config,
-    onResult: (Baseline) -> Unit
+    onResult: (Baseline, CalibrationValidationResult) -> Unit
 ) {
     Log.i("JAAGRIT", "finishCalibration: openFrames=${openFrames.size}, closedFrames=${closedFrames.size}")
     val baseline = BaselineCalculator.computeFromFrames(
@@ -521,8 +528,20 @@ private fun finishCalibration(
         calibratedAtMs = System.currentTimeMillis(),
         config = config
     )
-    Log.i("JAAGRIT", "finishCalibration result: thresh=${baseline.threshold}, gap=${baseline.earGap}, valid=${baseline.isValid}")
-    onResult(baseline)
+    val validation = CalibrationValidator.validate(
+        openFrames = openFrames,
+        openStartMs = openStartMs,
+        closedFrames = closedFrames,
+        closedStartMs = closedStartMs,
+        baseline = baseline,
+        config = config
+    )
+    val finalBaseline = when (validation) {
+        is CalibrationValidationResult.Success -> validation.baseline
+        is CalibrationValidationResult.Rejected -> validation.partialBaseline
+    }
+    Log.i("JAAGRIT", "finishCalibration result: thresh=${finalBaseline.threshold}, gap=${finalBaseline.earGap}, valid=${finalBaseline.isValid}")
+    onResult(finalBaseline, validation)
 }
 
 @Composable
@@ -745,6 +764,7 @@ private fun MathQuestionCard(
 @Composable
 private fun ResultCard(
     baseline: Baseline,
+    validationResult: CalibrationValidationResult?,
     onSaveAndProceed: () -> Unit,
     onRetry: () -> Unit,
     isSaving: Boolean
@@ -830,6 +850,25 @@ private fun ResultCard(
                     )
                 }
             } else {
+                val failMessage = when (val reason = (validationResult as? CalibrationValidationResult.Rejected)?.reason) {
+                    is CalibrationValidationResult.RejectionReason.NoClosedEyeFrames ->
+                        stringResource(R.string.calib_fail_no_closed_frames)
+                    is CalibrationValidationResult.RejectionReason.InsufficientOpenFrames ->
+                        stringResource(R.string.calib_fail_insufficient_open_frames, reason.usableCount)
+                    is CalibrationValidationResult.RejectionReason.InsufficientClosedFrames ->
+                        stringResource(R.string.calib_fail_insufficient_closed_frames, reason.usableCount)
+                    is CalibrationValidationResult.RejectionReason.GapTooSmall ->
+                        stringResource(
+                            R.string.calib_result_fail_sub,
+                            String.format(Locale.US, "%.3f", reason.gap)
+                        )
+                    null ->
+                        stringResource(
+                            R.string.calib_result_fail_sub,
+                            String.format(Locale.US, "%.3f", baseline.earGap)
+                        )
+                }
+
                 Text(
                     text = stringResource(R.string.calib_result_fail_title),
                     fontSize = 20.sp,
@@ -837,10 +876,7 @@ private fun ResultCard(
                     color = Color(0xFFFF5252)
                 )
                 Text(
-                    text = stringResource(
-                        R.string.calib_result_fail_sub,
-                        String.format(Locale.US, "%.3f", baseline.earGap)
-                    ),
+                    text = failMessage,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color(0xFFFF8A80),
