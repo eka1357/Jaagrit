@@ -9,6 +9,7 @@ import com.jaagrit.app.audio.FamilyClipPlayer
 import com.jaagrit.app.data.BaselineStore
 import com.jaagrit.app.data.SettingsStore
 import com.jaagrit.app.engine.Action
+import com.jaagrit.app.engine.AlertEventType
 import com.jaagrit.app.engine.Baseline
 import com.jaagrit.app.engine.Clock
 import com.jaagrit.app.engine.Config
@@ -21,6 +22,7 @@ import com.jaagrit.app.engine.Level
 import com.jaagrit.app.engine.VoiceEvent
 import com.jaagrit.app.platform.AlarmToneGenerator
 import com.jaagrit.app.platform.VibeManager
+import com.jaagrit.app.sms.SmsAvailability
 import com.jaagrit.app.sms.SmsNotifier
 import com.jaagrit.app.sms.SmsResult
 import com.jaagrit.app.speech.TtsSpeaker
@@ -54,6 +56,7 @@ data class MonitoringUiState(
     val faceFrame: FaceFrame = FaceFrame.EMPTY,
     val l5CountdownSeconds: Int? = null,
     val smsNotificationStatus: String? = null,
+    val smsAvailability: SmsAvailability = SmsAvailability.READY,
     val falseAlertCount: Int = 0,
     val suggestRecalibration: Boolean = false,
     val demoTimers: Boolean = false,
@@ -111,6 +114,7 @@ class MonitoringPipeline(
     private var engine: FatigueEngine = FatigueEngine(config = currentConfig, clock = clock)
     private val driveStartTimeMs: Long = clock.nowMs()
     private var totalAlerts = 0
+    private var l5NotSentLoggedForEpisode = false
 
     private val _uiState = MutableStateFlow(
         MonitoringUiState(
@@ -184,11 +188,14 @@ class MonitoringPipeline(
      */
     fun onImAwake() {
         Log.i(tag, "User tapped 'I'M AWAKE' — silencing alerts and resetting state")
+        l5NotSentLoggedForEpisode = false
         // Immediate physical silencing for instant tactile/auditory feedback
         alarmToneGenerator.stopAlarm()
         familyClipPlayer.stop()
         vibeManager.cancel()
         speaker.stop()
+
+        _uiState.update { it.copy(smsNotificationStatus = null) }
 
         // Confined processing via event channel (AUDIT-003)
         eventChannel.trySend(PipelineEvent.ImAwake)
@@ -252,7 +259,7 @@ class MonitoringPipeline(
         faceFound: Boolean,
         visionResult: VisionResult?
     ) {
-        executeActions(output.actions)
+        val availability = smsNotifier.checkAvailability()
 
         // AUDIT-004: derive alarm, vibration, family clip, and red flash state from ladder state (output.isAlertActive)
         // Alarm and vibration keep running through FACE_LOST and stop only on response (which clears isAlertActive)
@@ -261,7 +268,35 @@ class MonitoringPipeline(
             alarmToneGenerator.stopAlarm()
             familyClipPlayer.stop()
             vibeManager.cancel()
+            l5NotSentLoggedForEpisode = false
         }
+
+        // If SMS is unavailable at L5: no fake countdown. Show "Emergency SMS unavailable (reason)"
+        // copy the prepared emergency message to clipboard, and log alert event L5_NOT_SENT.
+        val effectiveL5Countdown = if (availability == SmsAvailability.READY) {
+            output.l5CountdownSeconds
+        } else {
+            null
+        }
+
+        if (output.level == Level.L5 && availability != SmsAvailability.READY && !l5NotSentLoggedForEpisode) {
+            l5NotSentLoggedForEpisode = true
+            scope.launch {
+                val preparedMsg = smsNotifier.prepareEmergencyMessage(totalAlerts)
+                smsNotifier.copyMessageToClipboard(preparedMsg)
+                Log.w(tag, "Engine Log: [${AlertEventType.L5_NOT_SENT}] Emergency SMS unavailable (${availability.reason}) - message copied to clipboard")
+            }
+        }
+
+        val updatedSmsStatus = when {
+            !isAlertActive -> null
+            availability != SmsAvailability.READY && (output.level == Level.L5 || output.l5CountdownSeconds != null) -> {
+                "Emergency SMS unavailable (${availability.reason})"
+            }
+            else -> _uiState.value.smsNotificationStatus
+        }
+
+        executeActions(output.actions)
 
         _uiState.update { current ->
             current.copy(
@@ -276,7 +311,9 @@ class MonitoringPipeline(
                 faceFrame = visionResult?.faceFrame ?: current.faceFrame,
                 driveTimeMs = (clock.nowMs() - driveStartTimeMs).coerceAtLeast(0L),
                 alertCount = totalAlerts,
-                l5CountdownSeconds = output.l5CountdownSeconds,
+                l5CountdownSeconds = effectiveL5Countdown,
+                smsNotificationStatus = updatedSmsStatus,
+                smsAvailability = availability,
                 falseAlertCount = output.falseAlertCount,
                 suggestRecalibration = output.suggestRecalibration,
                 demoTimers = currentConfig.demoTimers,
@@ -311,19 +348,35 @@ class MonitoringPipeline(
                 is Action.SendSms -> {
                     Log.w(tag, "Action.SendSms triggered: ${action.reason}")
                     scope.launch {
-                        _uiState.update { it.copy(smsNotificationStatus = "Sending SMS...") }
-                        val result = smsNotifier.sendEmergencyAlert(
-                            totalAlerts = totalAlerts,
-                            onStatusUpdate = { status ->
-                                _uiState.update { it.copy(smsNotificationStatus = status) }
+                        val availability = smsNotifier.checkAvailability()
+                        if (availability != SmsAvailability.READY) {
+                            val reason = availability.reason
+                            val preparedMsg = smsNotifier.prepareEmergencyMessage(totalAlerts)
+                            smsNotifier.copyMessageToClipboard(preparedMsg)
+                            Log.w(tag, "Engine Log: [${AlertEventType.L5_NOT_SENT}] Emergency SMS unavailable ($reason) - message copied to clipboard")
+                            _uiState.update {
+                                it.copy(
+                                    smsNotificationStatus = "Emergency SMS unavailable ($reason)"
+                                )
                             }
-                        )
-                        val statusText = when (result) {
-                            is SmsResult.Success -> "SMS sent to ${result.maskedNumber}"
-                            is SmsResult.Failure -> "SMS not sent: ${result.reason}"
+                        } else {
+                            _uiState.update { it.copy(smsNotificationStatus = "Sending SMS...") }
+                            val result = smsNotifier.sendEmergencyAlert(
+                                totalAlerts = totalAlerts,
+                                onStatusUpdate = { status ->
+                                    _uiState.update { it.copy(smsNotificationStatus = status) }
+                                }
+                            )
+                            val statusText = when (result) {
+                                is SmsResult.Success -> "SMS sent to ${result.maskedNumber}"
+                                is SmsResult.Failure -> {
+                                    Log.w(tag, "Engine Log: [${AlertEventType.L5_NOT_SENT}] SMS dispatch failure: ${result.reason}")
+                                    "SMS not sent: ${result.reason}"
+                                }
+                            }
+                            Log.i(tag, "Sms dispatch result: $statusText")
+                            _uiState.update { it.copy(smsNotificationStatus = statusText) }
                         }
-                        Log.i(tag, "Sms dispatch result: $statusText")
-                        _uiState.update { it.copy(smsNotificationStatus = statusText) }
                     }
                 }
                 is Action.Log -> {
