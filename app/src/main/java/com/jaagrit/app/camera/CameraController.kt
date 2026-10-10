@@ -28,6 +28,9 @@ class CameraController(
     private var boundPreview: Preview? = null
     private var boundImageAnalysis: ImageAnalysis? = null
 
+    // Optional frame filter (e.g. thermal throttling every-other-frame skip per D11)
+    var frameFilter: (() -> Boolean)? = null
+
     fun startCamera(
         lifecycleOwner: LifecycleOwner,
         previewView: PreviewView? = null,
@@ -54,6 +57,10 @@ class CameraController(
                             cameraExecutor = Executors.newSingleThreadExecutor()
                         }
                         analysis.setAnalyzer(cameraExecutor) { imageProxy ->
+                            if (frameFilter?.invoke() == true) {
+                                imageProxy.close()
+                                return@setAnalyzer
+                            }
                             landmarkerWrapper.processImageProxy(imageProxy)
                         }
                     }

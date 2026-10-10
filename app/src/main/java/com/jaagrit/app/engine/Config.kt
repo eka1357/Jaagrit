@@ -49,6 +49,15 @@ data class Config(
     val mathLatencyFactor: Double = MATH_LATENCY_FACTOR,
     // Default fallback max wait time for an answer to a companion cognitive question
     val defaultMathMaxWaitMs: Long = DEFAULT_MATH_MAX_WAIT_MS,
+    // Assumed speaking time if TTS never reports completion (COM-1: prompts are <= 5 s of speech)
+    val companionSpeechAllowanceMs: Long = COMPANION_SPEECH_ALLOWANCE_MS,
+    // How long after an L1 opener finishes we wait for any reply before counting it "ignored" (D2)
+    val companionOpenerReplyWindowMs: Long = COMPANION_OPENER_REPLY_WINDOW_MS,
+    // Score penalty while a slow math answer (> 2x baseline latency) confirms fatigue (COM-3)
+    val companionSlowAnswerPenalty: Double = COMPANION_SLOW_ANSWER_PENALTY,
+    val companionSlowAnswerWindowMs: Long = COMPANION_SLOW_ANSWER_WINDOW_MS,
+    // Number of on-screen quick-answer buttons for a math question (PHRASES.md §5 fallback)
+    val mathChoiceCount: Int = MATH_CHOICE_COUNT,
 
     // PERCLOS & blink dynamics (ENG-2, ENG-3, D12)
     // Rolling time window over which PERCLOS is calculated (60 seconds)
@@ -63,8 +72,12 @@ data class Config(
     val blinkRateL1Increase: Float = BLINK_RATE_L1_INCREASE,
     // Duration blink rate elevation must be sustained to trigger L1
     val blinkRateL1SustainMs: Long = BLINK_RATE_L1_SUSTAIN_MS,
-    // Feature gate for blink rate signal (AUDIT-012, gated until M9a)
+    // Feature gate for blink rate signal (AUDIT-012 gate lifted in M9a)
     val blinkSignalEnabled: Boolean = BLINK_SIGNAL_ENABLED,
+    // In-drive window used to refine the blink-rate baseline before the signal is scored (CAL-2, M9a)
+    val blinkBaselineLearnMs: Long = BLINK_BASELINE_LEARN_MS,
+    // Bucket length for the per-minute blink counts whose median becomes the learned baseline (D4)
+    val blinkBaselineBucketMs: Long = BLINK_BASELINE_BUCKET_MS,
 
     // Calibration settings (CAL-1, D4, D9)
     val calibrationYawnMs: Long = CALIBRATION_YAWN_MS,
@@ -184,6 +197,14 @@ data class Config(
         const val DISMISS_SILENCE_MS = 120000L
         const val MATH_LATENCY_FACTOR = 2.0
         const val DEFAULT_MATH_MAX_WAIT_MS = 5000L
+        // COM-1 caps prompts at 5 s of speech; used only when the TTS completion callback is missing
+        const val COMPANION_SPEECH_ALLOWANCE_MS = 5000L
+        // Openers are open-ended; 10 s after speech ends is enough to start an answer by voice or tap
+        const val COMPANION_OPENER_REPLY_WINDOW_MS = 10000L
+        // A slow answer confirms fatigue: 10 pts (about one score band's worth of drift) for 60 s
+        const val COMPANION_SLOW_ANSWER_PENALTY = 10.0
+        const val COMPANION_SLOW_ANSWER_WINDOW_MS = 60000L
+        const val MATH_CHOICE_COUNT = 4
 
         // PERCLOS & blink dynamics
         const val PERCLOS_WINDOW_MS = 60000L
@@ -192,7 +213,13 @@ data class Config(
         const val PERCLOS_MAX_PENALTY_THRESHOLD = 0.25f
         const val BLINK_RATE_L1_INCREASE = 0.20f
         const val BLINK_RATE_L1_SUSTAIN_MS = 30000L
-        const val BLINK_SIGNAL_ENABLED = false // Gated until M9a (AUDIT-012)
+        const val BLINK_SIGNAL_ENABLED = true // Enabled in M9a; AUDIT-012 handled by in-drive refinement below
+        // CAL-2: calibration sees only ~9 s of open eyes (0-2 blinks), far too few to estimate a rate.
+        // The first 3 min of each drive refine it: the median of three 1-min blink counts (D4).
+        // Effective baseline = max(calibrated, learned) so an undercount (e.g. face briefly lost while
+        // learning) can only make the signal less sensitive, never create false L1 prompts.
+        const val BLINK_BASELINE_LEARN_MS = 180_000L
+        const val BLINK_BASELINE_BUCKET_MS = 60_000L
 
         // Calibration
         const val CALIBRATION_OPEN_MS = 10000L
@@ -229,6 +256,7 @@ data class Config(
 
         // Milliseconds per hour conversion constant for continuous drive duration tracking
         const val MS_PER_HOUR = 3_600_000.0
+        const val MS_PER_MINUTE = 60_000.0
 
         // Minimum signal penalty score required to include a factor in human-readable explanation strings
         const val REASON_PENALTY_THRESHOLD = 5.0

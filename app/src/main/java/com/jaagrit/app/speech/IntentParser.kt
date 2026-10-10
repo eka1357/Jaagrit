@@ -48,8 +48,12 @@ object IntentParser {
                 '\u095F' -> sb.append('य')
                 // Combining nukta mark U+093C -> skip
                 '\u093C' -> { /* skip */ }
+                // Chandrabindu -> anusvara: recognizers emit "\u0939\u0942\u0902" and "\u0939\u0942\u0901" interchangeably
+                '\u0901' -> sb.append('\u0902')
                 else -> {
-                    if (ch.isLetterOrDigit() || ch.isWhitespace()) {
+                    // Devanagari vowel signs and virama are combining marks, not letters; dropping them
+                    // collapsed words like "दो" and "देर" into the same token "द".
+                    if (ch.isLetterOrDigit() || ch.isWhitespace() || isCombiningMark(ch)) {
                         sb.append(ch)
                     } else {
                         sb.append(' ')
@@ -60,6 +64,11 @@ object IntentParser {
         }
 
         return sb.toString().trim().replace(Regex("\\s+"), " ")
+    }
+
+    private fun isCombiningMark(ch: Char): Boolean {
+        val type = Character.getType(ch)
+        return type == Character.NON_SPACING_MARK.toInt() || type == Character.COMBINING_SPACING_MARK.toInt()
     }
 
     /**
