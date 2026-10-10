@@ -206,9 +206,13 @@
     <string name="voice_err_no_recognizer">ऑन-डिवाइस स्पीच पहचान उपलब्ध नहीं है</string>
     <string name="voice_err_lang_pack_missing">ऑफ़लाइन स्पीच भाषा पैक मौजूद नहीं है</string>
     <string name="voice_err_mic_blocked_alert">अलर्ट के दौरान माइक्रोफ़ोन बंद है</string>
-    <string name="voice_err_busy">स्पीच पहचान व्यस्त है, दोबारा टैप करें</string>
+    <string name="voice_err_busy">आवाज़ सेवा व्यस्त है। दोबारा प्रयास करें या बटन दबाएं।</string>
     <string name="voice_err_no_speech">कोई आवाज़ सुनाई नहीं दी</string>
-    <string name="voice_err_code">स्पीच पहचान त्रुटि: %1$s (%2$d)</string>
+    <string name="voice_err_code">आवाज़ सेवा व्यस्त है। दोबारा प्रयास करें या बटन दबाएं।</string>
+    <string name="btn_speech_disabled_lang_pack">ऑफ़लाइन भाषा पैक मौजूद नहीं है — नीचे बटन दबाएं</string>
+    <string name="btn_speech_disabled_unavailable">ऑफ़लाइन स्पीच पहचान अनुपलब्ध है — नीचे बटन दबाएं</string>
+    <string name="voice_sheet_title">आवाज़ और त्वरित कमांड</string>
+    <string name="btn_open_voice">जागृत से पूछें</string>
     <string name="perm_audio_title">माइक्रोफ़ोन</string>
     <string name="perm_audio_desc">गाड़ी चलाते समय वॉयस प्रश्न पूछने की सुविधा देता है।</string>
 
