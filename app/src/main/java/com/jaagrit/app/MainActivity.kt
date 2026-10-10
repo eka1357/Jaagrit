@@ -17,11 +17,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.jaagrit.app.data.SettingsStore
 import com.jaagrit.app.ui.calibration.CalibrationScreen
+import com.jaagrit.app.ui.dashboard.DashboardScreen
 import com.jaagrit.app.ui.history.HistoryScreen
 import com.jaagrit.app.ui.home.HomeScreen
 import com.jaagrit.app.ui.monitoring.MonitoringScreen
@@ -117,6 +120,9 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onNavigateToHistory = {
                                     navController.navigate("history")
+                                },
+                                onNavigateToDashboard = {
+                                    navController.navigate("dashboard")
                                 }
                             )
                         }
@@ -124,6 +130,9 @@ class MainActivity : ComponentActivity() {
                             HistoryScreen(
                                 onBack = {
                                     navController.popBackStack()
+                                },
+                                onOpenDashboard = { tripId ->
+                                    navController.navigate("dashboard/$tripId")
                                 }
                             )
                         }
@@ -142,10 +151,44 @@ class MainActivity : ComponentActivity() {
                         composable("monitoring") {
                             MonitoringScreen(
                                 onEndDrive = {
-                                    navController.popBackStack()
+                                    navController.navigate("dashboard") {
+                                        popUpTo("home")
+                                    }
                                 },
                                 onNavigateToCalibration = {
                                     navController.navigate("calibration")
+                                }
+                            )
+                        }
+                        composable("dashboard") {
+                            DashboardScreen(
+                                tripId = null,
+                                onBack = {
+                                    navController.popBackStack()
+                                },
+                                onStartDrive = {
+                                    navController.navigate("monitoring")
+                                },
+                                onStopDrive = {
+                                    navController.popBackStack()
+                                }
+                            )
+                        }
+                        composable(
+                            route = "dashboard/{tripId}",
+                            arguments = listOf(navArgument("tripId") { type = NavType.LongType })
+                        ) { backStackEntry ->
+                            val tripId = backStackEntry.arguments?.getLong("tripId")
+                            DashboardScreen(
+                                tripId = tripId,
+                                onBack = {
+                                    navController.popBackStack()
+                                },
+                                onStartDrive = {
+                                    navController.navigate("monitoring")
+                                },
+                                onStopDrive = {
+                                    navController.popBackStack()
                                 }
                             )
                         }
