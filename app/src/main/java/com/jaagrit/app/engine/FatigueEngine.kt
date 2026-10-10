@@ -1,5 +1,7 @@
 package com.jaagrit.app.engine
 
+import com.jaagrit.app.companion.CompanionLoop
+import com.jaagrit.app.companion.PhraseBankCompanion
 import com.jaagrit.app.speech.Phrases
 import kotlin.math.roundToInt
 
@@ -14,12 +16,14 @@ import kotlin.math.roundToInt
  * - ENG-4: FACE_LOST state: never escalates to alarms, 30 s verbal reminder.
  * - ENG-5: Emits pure Action list without Android API dependencies.
  * - DECISIONS: D1 (weights & scoring), D12 (ladder level arbitration: max(rawTrigger, scoreBand)).
+ * - COM-1..6: Companion engagement at L1/L2 via [CompanionLoop].
  */
 class FatigueEngine(
     val config: Config = Config.DEFAULT,
     val clock: Clock = Clock.SYSTEM,
     val baseline: Baseline = Baseline.DEFAULT,
-    val ladder: InterventionLadder = InterventionLadder(config, clock)
+    val ladder: InterventionLadder = InterventionLadder(config, clock),
+    val companion: CompanionLoop = CompanionLoop(config, clock, PhraseBankCompanion(config), baseline)
 ) {
     // Drive start timestamp
     private var driveStartTimeMs: Long = clock.nowMs()
@@ -43,6 +47,12 @@ class FatigueEngine(
 
     // Blink rate tracking (detected blinks within 60s)
     private val recentBlinks = ArrayDeque<Long>()
+
+    // In-drive blink baseline refinement and L1 sustain tracking (CAL-2, ENG-3, M9a)
+    private var learnBlinkBuckets = IntArray(learnBucketCount())
+    private var lastCountedBlinkTs: Long? = null
+    private var effectiveBlinkBaseline: Float? = null
+    private var blinkElevatedSinceMs: Long? = null
 
     // Head droop tracking
     private var headDroopStartTimeMs: Long? = null
@@ -69,6 +79,7 @@ class FatigueEngine(
         // 3. Eye Closure Detection (ENG-1)
         val isClosed = f.earAvg < baseline.threshold
         val currentClosureDuration = processEyeClosure(isClosed, now)
+        trackBlinkBaseline(now)
 
         // 4. Update sliding window for PERCLOS
         slidingWindow.addLast(EarSample(now, isClosed))
@@ -94,10 +105,12 @@ class FatigueEngine(
             reasons.add("Long eye closure (${"%.1f".format(longestRecentClosureMs / 1000.0)}s)")
         }
 
-        // 6c. Blink rate increase penalty (0 to 25 points, gated until M9a per AUDIT-012)
-        val blinkRatio = if (config.blinkSignalEnabled) computeBlinkRateRatio(now) else 0.0
-        val blinkPenalty = if (config.blinkSignalEnabled) computeBlinkRatePenalty(blinkRatio) else 0.0
-        if (config.blinkSignalEnabled && blinkPenalty > config.reasonPenaltyThreshold) {
+        // 6c. Blink rate increase penalty (0 to 25 points); silent until the in-drive baseline is learned
+        val blinkBaselineRate = if (config.blinkSignalEnabled) effectiveBlinkBaseline else null
+        val blinkRatio = blinkBaselineRate?.let { computeBlinkRateRatio(now, it) } ?: 0.0
+        val blinkPenalty = if (blinkBaselineRate != null) computeBlinkRatePenalty(blinkRatio) else 0.0
+        updateBlinkSustain(blinkBaselineRate != null && blinkRatio >= config.blinkRateL1Increase, now)
+        if (blinkPenalty > config.reasonPenaltyThreshold) {
             reasons.add("Blink rate elevated (+${(blinkRatio * 100).toInt()}% vs baseline)")
         }
 
@@ -153,6 +166,21 @@ class FatigueEngine(
         val activeLevel = maxOf(ladder.currentLadderLevel, rawTriggerLevel, scoreBandLevel)
         val activeState = determineState(activeLevel, currentClosureDuration)
 
+        // 10. Companion evaluation at L1/L2 (COM-1, COM-3, D2)
+        val companionOutcome = companion.evaluate(
+            activeLevel = activeLevel,
+            isEyesClosed = isClosed,
+            isAlertActive = ladder.isAlertActive,
+            now = now
+        )
+        val companionActions = when (companionOutcome) {
+            is CompanionLoop.CompanionOutcome.Actions -> companionOutcome.actions
+            is CompanionLoop.CompanionOutcome.EscalateToL3 -> {
+                ladder.fireL3(now, companionOutcome.reason) + companionOutcome.actions
+            }
+        }
+        val allActions = ladderActions + companionActions
+
         if (ladder.isL5Active) {
             reasons.add(0, "L5: Driver unresponsive")
         } else if (ladder.isL4Active) {
@@ -161,16 +189,28 @@ class FatigueEngine(
             reasons.add(0, "L3: Critical drowsiness detected")
         }
 
+        if (companion.isSlowCognitiveResponseActive(now)) {
+            companion.lastLatencyMs?.let { latency ->
+                reasons.add("Slow cognitive response (${latency}ms)")
+            }
+        }
+
         return EngineOutput(
             state = activeState,
             level = activeLevel,
             alertness = alertnessScore,
             reasons = reasons,
-            actions = ladderActions,
+            actions = allActions,
             isAlertActive = ladder.isAlertActive,
             l5CountdownSeconds = ladder.getL5RemainingSeconds(now),
             falseAlertCount = ladder.falseAlertCount,
-            suggestRecalibration = ladder.suggestRecalibration
+            suggestRecalibration = ladder.suggestRecalibration,
+            metrics = EngineMetrics(
+                perclos = perclos,
+                blinkRatePerMin = currentBlinkRatePerMin(now),
+                blinkBaselinePerMin = blinkBaselineRate
+            ),
+            companion = companion.status(now)
         )
     }
 
@@ -197,7 +237,8 @@ class FatigueEngine(
                 isAlertActive = ladder.isAlertActive,
                 l5CountdownSeconds = ladder.getL5RemainingSeconds(now),
                 falseAlertCount = ladder.falseAlertCount,
-                suggestRecalibration = ladder.suggestRecalibration
+                suggestRecalibration = ladder.suggestRecalibration,
+                companion = companion.status(now)
             )
         }
 
@@ -210,6 +251,21 @@ class FatigueEngine(
 
         val activeLevel = maxOf(ladder.currentLadderLevel, rawTriggerLevel, scoreBandLevel)
         val activeState = determineState(activeLevel, currentClosureDuration)
+
+        // Companion onTick evaluation
+        val companionOutcome = companion.evaluate(
+            activeLevel = activeLevel,
+            isEyesClosed = currentClosureDuration > 0L,
+            isAlertActive = ladder.isAlertActive,
+            now = now
+        )
+        val companionActions = when (companionOutcome) {
+            is CompanionLoop.CompanionOutcome.Actions -> companionOutcome.actions
+            is CompanionLoop.CompanionOutcome.EscalateToL3 -> {
+                ladder.fireL3(now, companionOutcome.reason) + companionOutcome.actions
+            }
+        }
+        actions.addAll(companionActions)
 
         val reasons = mutableListOf<String>()
         if (ladder.isL5Active) {
@@ -225,6 +281,12 @@ class FatigueEngine(
             }
         }
 
+        if (companion.isSlowCognitiveResponseActive(now)) {
+            companion.lastLatencyMs?.let { latency ->
+                reasons.add("Slow cognitive response (${latency}ms)")
+            }
+        }
+
         return EngineOutput(
             state = activeState,
             level = activeLevel,
@@ -234,7 +296,8 @@ class FatigueEngine(
             isAlertActive = ladder.isAlertActive,
             l5CountdownSeconds = ladder.getL5RemainingSeconds(now),
             falseAlertCount = ladder.falseAlertCount,
-            suggestRecalibration = ladder.suggestRecalibration
+            suggestRecalibration = ladder.suggestRecalibration,
+            companion = companion.status(now)
         )
     }
 
@@ -244,7 +307,20 @@ class FatigueEngine(
     fun onVoice(e: VoiceEvent): EngineOutput {
         val now = clock.nowMs()
         val actions = mutableListOf<Action>()
-        if (e is VoiceEvent.ImAwake || e is VoiceEvent.Answer || e is VoiceEvent.Command) {
+
+        if (e is VoiceEvent.Dismiss) {
+            actions.addAll(companion.onVoice(e, now = now))
+        } else if (e is VoiceEvent.Answer) {
+            actions.addAll(companion.onVoice(e, now = now))
+            actions.addAll(ladder.processResponse(now, "Answer: ${e.text}"))
+            closureStartTimeMs = null
+            lastClosedFrameTimeMs = null
+            recentClosures.clear()
+            slidingWindow.clear()
+            smoothedAlertness = 100.0
+            isFirstScoreSample = true
+        } else if (e is VoiceEvent.ImAwake || e is VoiceEvent.Command) {
+            actions.addAll(companion.onVoice(e, now = now))
             actions.addAll(ladder.processResponse(now, e.toString()))
             closureStartTimeMs = null
             lastClosedFrameTimeMs = null
@@ -281,7 +357,8 @@ class FatigueEngine(
             isAlertActive = ladder.isAlertActive,
             l5CountdownSeconds = ladder.getL5RemainingSeconds(now),
             falseAlertCount = ladder.falseAlertCount,
-            suggestRecalibration = ladder.suggestRecalibration
+            suggestRecalibration = ladder.suggestRecalibration,
+            companion = companion.status(now)
         )
     }
 
@@ -297,7 +374,12 @@ class FatigueEngine(
         hasSpokenFaceLostReminder = false
         slidingWindow.clear()
         recentBlinks.clear()
+        learnBlinkBuckets = IntArray(learnBucketCount())
+        lastCountedBlinkTs = null
+        effectiveBlinkBaseline = null
+        blinkElevatedSinceMs = null
         headDroopStartTimeMs = null
+        companion.reset(startTimeMs)
         ladder.reset(startTimeMs)
     }
 
@@ -399,13 +481,55 @@ class FatigueEngine(
 
     private fun computeRawTriggerLevel(now: Long, closureDuration: Long): Level {
         val perclos = computePerclos()
-        val blinkRatio = if (config.blinkSignalEnabled && baseline.blinkRate > 0f) computeBlinkRateRatio(now) else 0.0
+        val blinkSustained = blinkElevatedSinceMs?.let { now - it >= config.blinkRateL1SustainMs } == true
         return when {
             closureDuration >= config.closureConfirmMs -> Level.L3
             perclos >= config.perclosL2 -> Level.L2
-            config.blinkSignalEnabled && blinkRatio >= config.blinkRateL1Increase && (now - driveStartTimeMs >= config.blinkRateL1SustainMs) -> Level.L1
+            config.blinkSignalEnabled && blinkSustained -> Level.L1
             else -> Level.L0
         }
+    }
+
+    // --- Blink-rate baseline refinement & sustain (CAL-2, ENG-3, D12) ---
+
+    private fun learnBucketCount(): Int {
+        if (config.blinkBaselineLearnMs <= 0L || config.blinkBaselineBucketMs <= 0L) return 0
+        return ((config.blinkBaselineLearnMs + config.blinkBaselineBucketMs - 1) / config.blinkBaselineBucketMs).toInt()
+    }
+
+    /** Counts blinks already recorded by eye-closure processing into per-minute learning buckets. */
+    private fun trackBlinkBaseline(now: Long) {
+        val lastBlink = recentBlinks.lastOrNull()
+        if (lastBlink != null && lastBlink != lastCountedBlinkTs) {
+            lastCountedBlinkTs = lastBlink
+            val elapsed = lastBlink - driveStartTimeMs
+            if (elapsed >= 0L && elapsed < config.blinkBaselineLearnMs) {
+                val idx = (elapsed / config.blinkBaselineBucketMs).toInt()
+                if (idx in learnBlinkBuckets.indices) learnBlinkBuckets[idx]++
+            }
+        }
+        if (effectiveBlinkBaseline == null && now - driveStartTimeMs >= config.blinkBaselineLearnMs) {
+            effectiveBlinkBaseline = finalizeBlinkBaseline()
+        }
+    }
+
+    private fun finalizeBlinkBaseline(): Float? {
+        val calibrated = baseline.blinkRate.takeIf { it > 0f }
+        if (learnBlinkBuckets.isEmpty()) return calibrated
+        val perMinuteScale = Config.MS_PER_MINUTE / config.blinkBaselineBucketMs
+        val learned = BaselineCalculator.medianFloat(learnBlinkBuckets.map { (it * perMinuteScale).toFloat() })
+            .coerceIn(config.blinkRateClampMin, config.blinkRateClampMax)
+        return if (calibrated != null) maxOf(calibrated, learned) else learned
+    }
+
+    private fun updateBlinkSustain(isElevated: Boolean, now: Long) {
+        blinkElevatedSinceMs = if (isElevated) (blinkElevatedSinceMs ?: now) else null
+    }
+
+    private fun currentBlinkRatePerMin(now: Long): Double {
+        val windowMinutes = minOf((now - driveStartTimeMs) / config.perclosWindowMs.toDouble(), 1.0)
+            .coerceAtLeast(config.blinkRateMinWindowMinutes)
+        return recentBlinks.size / windowMinutes
     }
 
     private fun determineState(activeLevel: Level, closureDuration: Long): DriverState {
@@ -453,12 +577,9 @@ class FatigueEngine(
         }
     }
 
-    private fun computeBlinkRateRatio(now: Long): Double {
-        if (baseline.blinkRate <= 0f) return 0.0
-        val windowMinutes = minOf((now - driveStartTimeMs) / config.perclosWindowMs.toDouble(), 1.0)
-            .coerceAtLeast(config.blinkRateMinWindowMinutes)
-        val currentRate = recentBlinks.size / windowMinutes
-        return (currentRate - baseline.blinkRate) / baseline.blinkRate
+    private fun computeBlinkRateRatio(now: Long, baselineRate: Float): Double {
+        if (baselineRate <= 0f) return 0.0
+        return (currentBlinkRatePerMin(now) - baselineRate) / baselineRate
     }
 
     private fun computeBlinkRatePenalty(blinkRatio: Double): Double {

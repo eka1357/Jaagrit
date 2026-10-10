@@ -83,7 +83,10 @@ data class MonitoringUiState(
     val isListening: Boolean = false,
     val lastRecognizedText: String? = null,
     val lastMatchedIntent: com.jaagrit.app.speech.DriverIntent? = null,
-    val recognitionLatencyMs: Long? = null
+    val recognitionLatencyMs: Long? = null,
+    val companion: com.jaagrit.app.engine.CompanionStatus? = null,
+    val phoneTemperatureC: Float = 0f,
+    val isThermalThrottling: Boolean = false
 ) {
     val isAlert: Boolean
         get() = level >= Level.L3 || isRedFlashActive
@@ -124,7 +127,8 @@ class MonitoringPipeline(
     private val tripRepository: TripRepository = TripRepository(
         JaagritDatabase.getDatabase(context).tripDao(),
         JaagritDatabase.getDatabase(context).alertDao()
-    )
+    ),
+    val thermalMonitor: com.jaagrit.app.platform.ThermalMonitor = com.jaagrit.app.platform.ThermalMonitor(context)
 ) {
     private val tag = "JAAGRIT"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -136,9 +140,15 @@ class MonitoringPipeline(
         data class Vision(val result: VisionResult) : PipelineEvent
         object Tick : PipelineEvent
         object ImAwake : PipelineEvent
+        data class Voice(val event: VoiceEvent) : PipelineEvent
     }
 
     private val eventChannel = Channel<PipelineEvent>(capacity = Channel.UNLIMITED)
+
+    init {
+        // Wire thermal frame skipping into camera pipeline (D11)
+        cameraController.frameFilter = { thermalMonitor.shouldSkipFrame() }
+    }
 
     private var currentConfig: Config = initialConfig
     private var currentBaseline: Baseline = Baseline.DEFAULT
@@ -246,6 +256,7 @@ class MonitoringPipeline(
                     is PipelineEvent.Vision -> processVisionResult(event.result)
                     is PipelineEvent.Tick -> processTick()
                     is PipelineEvent.ImAwake -> processImAwake()
+                    is PipelineEvent.Voice -> processVoice(event.event)
                 }
             }
         }
@@ -367,6 +378,7 @@ class MonitoringPipeline(
         answerDismissJob?.cancel()
         speaker.shutdown()
         cameraController.release()
+        thermalMonitor.release()
         boundLifecycleOwner = null
         boundPreviewView = null
     }
@@ -404,7 +416,11 @@ class MonitoringPipeline(
     }
 
     private fun processImAwake() {
-        val output = engine.onVoice(VoiceEvent.ImAwake)
+        processVoice(VoiceEvent.ImAwake)
+    }
+
+    private fun processVoice(event: VoiceEvent) {
+        val output = engine.onVoice(event)
         handleEngineOutput(output, faceFound = _uiState.value.faceFound, visionResult = null)
     }
 
@@ -474,6 +490,8 @@ class MonitoringPipeline(
 
         executeActions(output.actions)
 
+        val thermal = thermalMonitor.thermalInfo.value
+
         _uiState.update { current ->
             current.copy(
                 alertness = output.alertness,
@@ -493,7 +511,10 @@ class MonitoringPipeline(
                 falseAlertCount = output.falseAlertCount,
                 suggestRecalibration = output.suggestRecalibration,
                 demoTimers = currentConfig.demoTimers,
-                quickCalibration = currentConfig.quickCalibration
+                quickCalibration = currentConfig.quickCalibration,
+                companion = output.companion,
+                phoneTemperatureC = thermal.temperatureCelsius,
+                isThermalThrottling = thermal.isThrottling
             )
         }
     }
@@ -604,6 +625,9 @@ class MonitoringPipeline(
                 }
                 is Action.AskQuestion -> {
                     Log.d(tag, "Action.AskQuestion triggered: ${action.q.prompt}")
+                    val lang = runBlocking { settingsStore.getAppLanguage() }
+                    val speechLang = if (lang == "hi") Lang.HI else Lang.EN
+                    speaker.speak(action.q.prompt, speechLang, urgent = false)
                 }
             }
         }
@@ -718,7 +742,8 @@ class MonitoringPipeline(
                     }
                 }
                 DriverIntent.DISMISS -> {
-                    Log.i(tag, "Driver requested DISMISS - logged (companion arrives in M9)")
+                    Log.i(tag, "Driver requested DISMISS via voice/fallback")
+                    dismissCompanion()
                 }
                 DriverIntent.UNKNOWN -> {
                     val answer = getLocalizedString(R.string.voice_ans_say_again)
@@ -795,7 +820,11 @@ class MonitoringPipeline(
                         recognitionLatencyMs = latency
                     )
                 }
-                executeIntent(intent, onNavigateToCalibration)
+                if (_uiState.value.companion?.text != null && intent == DriverIntent.UNKNOWN) {
+                    submitCompanionAnswer(spokenText)
+                } else {
+                    executeIntent(intent, onNavigateToCalibration)
+                }
             },
             onError = { errorReason ->
                 Log.w(tag, "Speech recognition failed: $errorReason")
@@ -829,5 +858,21 @@ class MonitoringPipeline(
     fun cancelPushToTalk(speechInput: SpeechInput) {
         speechInput.cancel()
         _uiState.update { it.copy(isListening = false) }
+    }
+
+    /**
+     * Submit an answer to the currently active companion question (via button or voice).
+     */
+    fun submitCompanionAnswer(text: String) {
+        Log.i(tag, "Driver submitted companion answer: '$text'")
+        eventChannel.trySend(PipelineEvent.Voice(VoiceEvent.Answer(text = text, latencyMs = 0L)))
+    }
+
+    /**
+     * Dismiss the companion prompt (silences companion prompts for 2 minutes).
+     */
+    fun dismissCompanion() {
+        Log.i(tag, "Driver dismissed companion")
+        eventChannel.trySend(PipelineEvent.Voice(VoiceEvent.Dismiss))
     }
 }

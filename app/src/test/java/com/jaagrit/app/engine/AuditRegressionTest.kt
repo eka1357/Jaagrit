@@ -277,12 +277,14 @@ class AuditRegressionTest {
         assertTrue("L4 fires 10s after face returned", l4Tick.actions.any { it is Action.PlayFamilyClip })
     }
 
-    // --- AUDIT-012: Blink Signal Feature Gate ---
+    // --- AUDIT-012: Blink signal must not fire from a poorly estimated baseline ---
+    // M9a enabled the signal (D12). The AUDIT-012 protection is now the in-drive learning window:
+    // no blink penalty or L1 until the first BLINK_BASELINE_LEARN_MS (3 min) refine the baseline (CAL-2).
 
     @Test
-    fun testAudit012_blinkSignalGatedByDefault() {
-        // Default Config has blinkSignalEnabled = false
-        assertFalse(Config.DEFAULT.blinkSignalEnabled)
+    fun testAudit012_blinkSignalSilentDuringBaselineLearning() {
+        assertTrue(Config.DEFAULT.blinkSignalEnabled)
+        assertEquals(180_000L, Config.BLINK_BASELINE_LEARN_MS)
 
         val defaultEngine = FatigueEngine(
             config = Config.DEFAULT,
@@ -305,12 +307,13 @@ class AuditRegressionTest {
             }
         }
 
-        // Because blinkSignalEnabled is false:
+        // Still inside the 3-min learning window (52 s elapsed):
         // 1. Raw L1 trigger does not fire on blink rate
-        assertEquals("Blink signal gated: state is NORMAL", DriverState.NORMAL, output.state)
-        assertEquals("Blink signal gated: level is L0", Level.L0, output.level)
+        assertEquals("Blink signal learning: state is NORMAL", DriverState.NORMAL, output.state)
+        assertEquals("Blink signal learning: level is L0", Level.L0, output.level)
+        assertEquals("Baseline not yet learned", null, output.metrics?.blinkBaselinePerMin)
         // 2. Alertness penalty is 0, score is 100
-        assertEquals("Alertness score unaffected by gated blink signal", 100, output.alertness)
+        assertEquals("Alertness score unaffected while learning", 100, output.alertness)
         assertFalse("Reasons list contains no blink alert", output.reasons.any { it.contains("Blink") })
     }
 }

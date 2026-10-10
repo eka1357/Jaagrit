@@ -712,6 +712,104 @@ private fun ActiveMonitoringContent(
                     }
                 }
 
+                // Companion Interaction Card (M9)
+                if (uiState.companion?.text != null) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .padding(top = 10.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f)
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_check),
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "Jaagrit Companion",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Text(
+                                    text = "Tap or Speak",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            }
+                            Text(
+                                text = uiState.companion?.text ?: "",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                            val choices = uiState.companion?.choices
+                            if (!choices.isNullOrEmpty()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    choices.forEach { choice ->
+                                        Button(
+                                            onClick = { pipeline.submitCompanionAnswer(choice) },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(44.dp),
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.primary,
+                                                contentColor = MaterialTheme.colorScheme.onPrimary
+                                            )
+                                        ) {
+                                            Text(
+                                                text = choice,
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = { pipeline.dismissCompanion() },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(34.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text(
+                                    text = "Dismiss (2 min)",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Debug Telemetry Panel (shown on long-pressing title)
                 AnimatedVisibility(visible = showDebugPanel) {
                     Card(
@@ -734,6 +832,15 @@ private fun ActiveMonitoringContent(
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(text = "FPS: ${String.format(Locale.US, "%.1f", uiState.fps)}", fontSize = 12.sp)
                                 Text(text = "Inference: ${uiState.inferenceTimeMs}ms", fontSize = 12.sp)
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                val tempStr = if (uiState.phoneTemperatureC > 0f) "${String.format(Locale.US, "%.1f", uiState.phoneTemperatureC)}°C" else "N/A"
+                                Text(text = "Temp: $tempStr", fontSize = 12.sp)
+                                Text(
+                                    text = "Thermal Throttle: ${if (uiState.isThermalThrottling) "ACTIVE (1/2 fps)" else "OFF"}",
+                                    fontSize = 12.sp,
+                                    color = if (uiState.isThermalThrottling) Color(0xFFD32F2F) else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(text = "EAR L/R: ${String.format(Locale.US, "%.3f", uiState.faceFrame.earL)} / ${String.format(Locale.US, "%.3f", uiState.faceFrame.earR)}", fontSize = 12.sp)
@@ -792,6 +899,18 @@ private fun ActiveMonitoringContent(
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.Bold
                                 )
+                            }
+                            uiState.companion?.let { comp ->
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(text = "Companion: ${comp.kind?.name ?: "IDLE"}", fontSize = 12.sp)
+                                    Text(text = "Silenced: ${comp.silenced} | Backoff: ${comp.backedOff}", fontSize = 12.sp)
+                                }
+                                if (comp.lastLatencyMs != null) {
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(text = "Comp Latency: ${comp.lastLatencyMs}ms", fontSize = 12.sp)
+                                        Text(text = "Slow: ${comp.lastAnswerSlow} | Correct: ${comp.lastAnswerCorrect ?: "N/A"}", fontSize = 12.sp)
+                                    }
+                                }
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(text = "Voice: ${uiState.lastRecognizedText ?: "None"}", fontSize = 12.sp)

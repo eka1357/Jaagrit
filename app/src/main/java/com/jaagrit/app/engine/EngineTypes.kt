@@ -59,7 +59,27 @@ data class CompanionQuestion(
     val id: Int,
     val prompt: String,
     val answer: String,
-    val maxWaitMs: Long
+    val maxWaitMs: Long,
+    // On-screen quick-answer buttons (includes the correct answer), used when speech fails
+    val choices: List<String> = emptyList()
+)
+
+enum class CompanionPromptKind {
+    OPENER,      // L1 friendly question; no reply = "ignored", never escalates (D2)
+    MATH,        // L2 cognitive question; no reply within max wait escalates to L3 (COM-3)
+    SOFT_CHECK   // LAD-2 head-droop "Sab theek hai?" check
+}
+
+/** Companion state for the UI card and debug panel. */
+data class CompanionStatus(
+    val kind: CompanionPromptKind?,
+    val text: String?,
+    val choices: List<String> = emptyList(),
+    val silenced: Boolean = false,
+    val backedOff: Boolean = false,
+    val lastLatencyMs: Long? = null,
+    val lastAnswerSlow: Boolean = false,
+    val lastAnswerCorrect: Boolean? = null
 )
 
 sealed interface VoiceEvent {
@@ -84,6 +104,14 @@ sealed interface Action {
     data class Log(val event: AlertEventType, val detail: String) : Action
 }
 
+/** Raw signal values for the debug panel only (AGENTS.md Rule 7). Present on frame outputs. */
+data class EngineMetrics(
+    val perclos: Double,
+    val blinkRatePerMin: Double,
+    // null while the in-drive blink baseline is still being learned (first 3 min, CAL-2)
+    val blinkBaselinePerMin: Float?
+)
+
 data class EngineOutput(
     val state: DriverState,
     val level: Level,
@@ -93,7 +121,9 @@ data class EngineOutput(
     val isAlertActive: Boolean = false,
     val l5CountdownSeconds: Int? = null,
     val falseAlertCount: Int = 0,
-    val suggestRecalibration: Boolean = false
+    val suggestRecalibration: Boolean = false,
+    val metrics: EngineMetrics? = null,
+    val companion: CompanionStatus? = null
 ) {
     companion object {
         val INITIAL = EngineOutput(
