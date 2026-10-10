@@ -35,6 +35,10 @@ class SettingsStore(private val context: Context) {
         prefs[KEY_QUICK_CALIBRATION] ?: false
     }
 
+    val appLanguageFlow: Flow<String> = context.settingsDataStore.data.map { prefs ->
+        prefs[KEY_APP_LANGUAGE] ?: DEFAULT_LANGUAGE
+    }
+
     suspend fun getDriverName(): String = driverNameFlow.first()
 
     suspend fun getEmergencyContact(): String = emergencyContactFlow.first()
@@ -42,6 +46,14 @@ class SettingsStore(private val context: Context) {
     suspend fun isDemoTimersEnabled(): Boolean = demoTimersFlow.first()
 
     suspend fun isQuickCalibrationEnabled(): Boolean = quickCalibrationFlow.first()
+
+    suspend fun getAppLanguage(): String = appLanguageFlow.first()
+
+    suspend fun setAppLanguage(lang: String) {
+        context.settingsDataStore.edit { prefs ->
+            prefs[KEY_APP_LANGUAGE] = if (lang == LANG_ENGLISH) LANG_ENGLISH else LANG_HINDI
+        }
+    }
 
     suspend fun saveDriverName(name: String) {
         context.settingsDataStore.edit { prefs ->
@@ -69,11 +81,15 @@ class SettingsStore(private val context: Context) {
 
     companion object {
         const val DEFAULT_DRIVER_NAME = "Driver"
+        const val DEFAULT_LANGUAGE = "hi"
+        const val LANG_HINDI = "hi"
+        const val LANG_ENGLISH = "en"
 
         val KEY_DRIVER_NAME = stringPreferencesKey("driver_name")
         val KEY_EMERGENCY_CONTACT = stringPreferencesKey("emergency_contact")
         val KEY_DEMO_TIMERS = booleanPreferencesKey("demo_timers")
         val KEY_QUICK_CALIBRATION = booleanPreferencesKey("quick_calibration")
+        val KEY_APP_LANGUAGE = stringPreferencesKey("app_language")
 
         /**
          * Masks phone number showing only the last 2 digits for privacy in logs & UI.

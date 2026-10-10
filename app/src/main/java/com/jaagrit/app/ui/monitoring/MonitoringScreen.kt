@@ -38,6 +38,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -56,6 +57,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -63,10 +66,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.jaagrit.app.R
 import com.jaagrit.app.camera.MonitoringPipeline
-import com.jaagrit.app.camera.MonitoringUiState
 import com.jaagrit.app.engine.DriverState
 import com.jaagrit.app.sms.SmsNotifier
+import com.jaagrit.app.ui.components.JaagritBrandHeader
+import java.util.Locale
 
 @Composable
 fun MonitoringScreen(
@@ -237,13 +242,23 @@ private fun ActiveMonitoringContent(
         DriverState.CALIBRATING -> Color(0xFF1976D2)// Blue
     }
 
-    val stateWord = when (uiState.state) {
-        DriverState.NORMAL -> "अलर्ट • Focused"
-        DriverState.CAUTION -> "थकान बढ़ रही है • Caution"
-        DriverState.FATIGUED -> "जवाब दो • Fatigued"
-        DriverState.CRITICAL -> "जागो! • DROWSY"
-        DriverState.FACE_LOST -> "चेहरा नहीं दिख रहा • Face Lost"
-        DriverState.CALIBRATING -> "कैलिब्रेशन • Calibrating"
+    // State word from string resources (Rule 8: single word/phrase + icon per language)
+    val stateRes = when (uiState.state) {
+        DriverState.NORMAL -> R.string.state_normal
+        DriverState.CAUTION -> R.string.state_caution
+        DriverState.FATIGUED -> R.string.state_fatigued
+        DriverState.CRITICAL -> R.string.state_critical
+        DriverState.FACE_LOST -> R.string.state_face_lost
+        DriverState.CALIBRATING -> R.string.state_calibrating
+    }
+
+    val stateIconRes = when (uiState.state) {
+        DriverState.NORMAL -> R.drawable.ic_check
+        DriverState.CAUTION -> R.drawable.ic_warning
+        DriverState.FATIGUED -> R.drawable.ic_warning
+        DriverState.CRITICAL -> R.drawable.ic_warning
+        DriverState.FACE_LOST -> R.drawable.ic_camera
+        DriverState.CALIBRATING -> R.drawable.ic_history
     }
 
     Column(
@@ -261,10 +276,9 @@ private fun ActiveMonitoringContent(
                 modifier = Modifier.padding(top = 4.dp)
             ) {
                 Text(
-                    text = "JAAGRIT • CRITICAL ALERT",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 2.sp,
+                    text = stringResource(R.string.critical_banner_title),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
             }
@@ -286,12 +300,10 @@ private fun ActiveMonitoringContent(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "JAAGRIT",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 2.sp,
-                        color = MaterialTheme.colorScheme.onSurface
+                    JaagritBrandHeader(
+                        wordmarkSize = 22.sp,
+                        subSize = 12.sp,
+                        horizontalAlignment = Alignment.Start
                     )
 
                     Surface(
@@ -300,16 +312,18 @@ private fun ActiveMonitoringContent(
                         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2E7D32).copy(alpha = 0.4f))
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Text(
-                                text = "🔒",
-                                fontSize = 12.sp
+                            Icon(
+                                painter = painterResource(R.drawable.ic_lock),
+                                contentDescription = null,
+                                tint = Color(0xFF2E7D32),
+                                modifier = Modifier.size(12.dp)
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "ON-DEVICE • OFFLINE",
+                                text = stringResource(R.string.badge_offline),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF2E7D32)
@@ -319,7 +333,7 @@ private fun ActiveMonitoringContent(
                 }
 
                 Text(
-                    text = if (showDebugPanel) "Telemetry Active (long-press title to close)" else "Driving Alertness Monitor",
+                    text = stringResource(if (showDebugPanel) R.string.telemetry_active_hint else R.string.monitoring_title),
                     fontSize = 12.sp,
                     color = if (showDebugPanel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
                     modifier = Modifier.padding(top = 2.dp)
@@ -327,7 +341,7 @@ private fun ActiveMonitoringContent(
             }
         }
 
-        // 2. Middle Section: Camera preview + Alertness + State + Stats / Status
+        // 2. Middle Section: Camera preview + Alertness + State + Stats
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
@@ -336,7 +350,7 @@ private fun ActiveMonitoringContent(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.Center
         ) {
-            // Small Camera Preview (doesn't overlap text)
+            // Camera Preview (doesn't overlap text)
             Box(
                 modifier = Modifier
                     .size(width = 140.dp, height = 175.dp)
@@ -372,7 +386,7 @@ private fun ActiveMonitoringContent(
                         .padding(horizontal = 8.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = if (uiState.faceFound) "FACE VISIBLE" else "NO FACE",
+                        text = stringResource(if (uiState.faceFound) R.string.face_visible else R.string.no_face),
                         color = if (uiState.faceFound) Color(0xFF81C784) else Color(0xFFE57373),
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
@@ -383,35 +397,36 @@ private fun ActiveMonitoringContent(
             Spacer(modifier = Modifier.height(14.dp))
 
             if (isAlert) {
-                // Alert Mode State: clean white text
+                // Critical Alert Mode State: Clean single headline & instruction (Rule 8)
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "जागो! WAKE UP!",
+                        text = stringResource(R.string.critical_headline),
                         color = Color.White,
-                        fontSize = 30.sp,
-                        fontWeight = FontWeight.Black,
+                        fontSize = 34.sp,
+                        fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center
                     )
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "गाड़ी धीरे करो और आँखें खोलो!",
+                        text = stringResource(R.string.critical_instruction),
                         color = Color.White.copy(alpha = 0.95f),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center
                     )
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Big Score in Alert Mode: White text
+                // Big Score in Alert Mode: White text (always Latin digits)
                 Row(
                     verticalAlignment = Alignment.Bottom,
                     horizontalArrangement = Arrangement.Center
                 ) {
                     Text(
-                        text = "${uiState.alertness}",
+                        text = String.format(Locale.US, "%d", uiState.alertness),
                         fontSize = 68.sp,
-                        fontWeight = FontWeight.Black,
+                        fontWeight = FontWeight.Bold,
                         color = Color.White,
                         lineHeight = 68.sp
                     )
@@ -424,7 +439,7 @@ private fun ActiveMonitoringContent(
                     )
                 }
 
-                // L5 Status Line (Derived strictly from SmsNotifier / real SmsResult)
+                // L5 Status Line
                 val l5StatusText = SmsNotifier.formatL5StatusLabel(
                     level = uiState.level,
                     l5CountdownSeconds = uiState.l5CountdownSeconds,
@@ -450,15 +465,15 @@ private fun ActiveMonitoringContent(
                     }
                 }
             } else {
-                // Giant Alertness Number (Normal Mode)
+                // Giant Alertness Number (Normal Mode, always Latin digits)
                 Row(
                     verticalAlignment = Alignment.Bottom,
                     horizontalArrangement = Arrangement.Center
                 ) {
                     Text(
-                        text = "${uiState.alertness}",
+                        text = String.format(Locale.US, "%d", uiState.alertness),
                         fontSize = 76.sp,
-                        fontWeight = FontWeight.Black,
+                        fontWeight = FontWeight.Bold,
                         color = themeColor,
                         lineHeight = 76.sp
                     )
@@ -471,20 +486,31 @@ private fun ActiveMonitoringContent(
                     )
                 }
 
-                // State Word Banner
+                // State Word Banner with Icon (Rule 8: one word/phrase plus an icon)
                 Surface(
                     shape = RoundedCornerShape(50),
                     color = themeColor.copy(alpha = 0.14f),
                     border = androidx.compose.foundation.BorderStroke(1.5.dp, themeColor.copy(alpha = 0.6f)),
                     modifier = Modifier.padding(top = 4.dp)
                 ) {
-                    Text(
-                        text = stateWord,
-                        color = themeColor,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp,
-                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(stateIconRes),
+                            contentDescription = null,
+                            tint = themeColor,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = stringResource(stateRes),
+                            color = themeColor,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp
+                        )
+                    }
                 }
 
                 // Reasons summary (if degraded)
@@ -517,7 +543,7 @@ private fun ActiveMonitoringContent(
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = "Drive Time",
+                                text = stringResource(R.string.stat_drive_time),
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.outline
                             )
@@ -539,13 +565,13 @@ private fun ActiveMonitoringContent(
 
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = "Alerts",
+                                text = stringResource(R.string.stat_alerts),
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.outline
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "${uiState.alertCount}",
+                                text = String.format(Locale.US, "%d", uiState.alertCount),
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (uiState.alertCount > 0) Color(0xFFD32F2F) else MaterialTheme.colorScheme.onSurfaceVariant
@@ -570,14 +596,25 @@ private fun ActiveMonitoringContent(
                             modifier = Modifier.padding(14.dp),
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_warning),
+                                    contentDescription = null,
+                                    tint = Color(0xFFE65100),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = stringResource(R.string.recalib_suggested_title),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = Color(0xFFE65100)
+                                )
+                            }
                             Text(
-                                text = "⚠️ Recalibration Suggested",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
-                                color = Color(0xFFE65100)
-                            )
-                            Text(
-                                text = "${uiState.falseAlertCount} alerts dismissed in 10 minutes. Calibrating again can adapt to changing light or posture.",
+                                text = stringResource(R.string.recalib_suggested_body, uiState.falseAlertCount),
                                 fontSize = 12.sp,
                                 color = Color(0xFF5D4037)
                             )
@@ -605,15 +642,15 @@ private fun ActiveMonitoringContent(
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(text = "FPS: ${"%.1f".format(uiState.fps)}", fontSize = 12.sp)
+                                Text(text = "FPS: ${String.format(Locale.US, "%.1f", uiState.fps)}", fontSize = 12.sp)
                                 Text(text = "Inference: ${uiState.inferenceTimeMs}ms", fontSize = 12.sp)
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(text = "EAR L/R: ${"%.3f".format(uiState.faceFrame.earL)} / ${"%.3f".format(uiState.faceFrame.earR)}", fontSize = 12.sp)
-                                Text(text = "MAR: ${"%.3f".format(uiState.faceFrame.mar)}", fontSize = 12.sp)
+                                Text(text = "EAR L/R: ${String.format(Locale.US, "%.3f", uiState.faceFrame.earL)} / ${String.format(Locale.US, "%.3f", uiState.faceFrame.earR)}", fontSize = 12.sp)
+                                Text(text = "MAR: ${String.format(Locale.US, "%.3f", uiState.faceFrame.mar)}", fontSize = 12.sp)
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(text = "Pitch: ${"%.1f".format(uiState.faceFrame.pitchDeg)}°", fontSize = 12.sp)
+                                Text(text = "Pitch: ${String.format(Locale.US, "%.1f", uiState.faceFrame.pitchDeg)}°", fontSize = 12.sp)
                                 Text(text = "State: ${uiState.state.name} (${uiState.level.name})", fontSize = 12.sp)
                             }
                             Row(
@@ -694,16 +731,15 @@ private fun ActiveMonitoringContent(
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 8.dp)
                 ) {
                     Text(
-                        text = "I'M AWAKE",
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 2.sp
+                        text = stringResource(R.string.btn_im_awake),
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Tap button to stop alarm and cancel SMS",
+                    text = stringResource(R.string.im_awake_hint),
                     color = Color.White.copy(alpha = 0.9f),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
@@ -722,7 +758,7 @@ private fun ActiveMonitoringContent(
                 )
             ) {
                 Text(
-                    text = "End Drive",
+                    text = stringResource(R.string.btn_end_drive),
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onError
@@ -754,14 +790,14 @@ private fun PreDrivePermissionsRationale(
             modifier = Modifier.padding(top = 16.dp)
         ) {
             Text(
-                text = "Pre-Drive Permissions",
+                text = stringResource(R.string.predrive_perm_title),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Jaagrit requires permissions to protect you on the road. All processing is 100% offline on your device.",
+                text = stringResource(R.string.predrive_perm_desc),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -788,20 +824,31 @@ private fun PreDrivePermissionsRationale(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_camera),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.perm_camera_title),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                        }
                         Text(
-                            text = "📷 Front Camera",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-                        Text(
-                            text = if (cameraGranted) "Granted ✓" else "Required ⚠️",
+                            text = stringResource(if (cameraGranted) R.string.perm_status_granted else R.string.perm_status_required),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = if (cameraGranted) Color(0xFF2E7D32) else Color(0xFFC62828)
                         )
                     }
                     Text(
-                        text = "Watches eye closure and head posture in memory to estimate alertness.",
+                        text = stringResource(R.string.perm_camera_desc),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -814,20 +861,31 @@ private fun PreDrivePermissionsRationale(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_sms),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.perm_sms_title),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                        }
                         Text(
-                            text = "💬 Emergency SMS",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-                        Text(
-                            text = if (smsGranted) "Granted ✓" else "Not granted",
+                            text = stringResource(if (smsGranted) R.string.perm_status_granted else R.string.perm_status_not_granted),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = if (smsGranted) Color(0xFF2E7D32) else Color(0xFFE65100)
                         )
                     }
                     Text(
-                        text = "Sends an emergency SMS to your contact if you become unresponsive at L5.",
+                        text = stringResource(R.string.perm_sms_desc),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -840,20 +898,31 @@ private fun PreDrivePermissionsRationale(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_location),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.perm_location_title),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                        }
                         Text(
-                            text = "📍 Location (GPS)",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-                        Text(
-                            text = if (locationGranted) "Granted ✓" else "Not granted",
+                            text = stringResource(if (locationGranted) R.string.perm_status_granted else R.string.perm_status_not_granted),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = if (locationGranted) Color(0xFF2E7D32) else Color(0xFFE65100)
                         )
                     }
                     Text(
-                        text = "Includes your approximate GPS coordinates in the emergency SMS for help.",
+                        text = stringResource(R.string.perm_location_desc),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -874,7 +943,11 @@ private fun PreDrivePermissionsRationale(
                     .height(52.dp),
                 shape = RoundedCornerShape(14.dp)
             ) {
-                Text(text = "Grant Permissions", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    text = stringResource(R.string.btn_grant_permissions),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
 
             if (cameraGranted) {
@@ -888,7 +961,11 @@ private fun PreDrivePermissionsRationale(
                         containerColor = MaterialTheme.colorScheme.secondary
                     )
                 ) {
-                    Text(text = "Start Drive Anyway", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = stringResource(R.string.btn_start_anyway),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
 
@@ -899,7 +976,10 @@ private fun PreDrivePermissionsRationale(
                     .height(52.dp),
                 shape = RoundedCornerShape(14.dp)
             ) {
-                Text(text = "Back to Home", fontSize = 16.sp)
+                Text(
+                    text = stringResource(R.string.btn_back_home),
+                    fontSize = 16.sp
+                )
             }
         }
     }

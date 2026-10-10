@@ -1,7 +1,6 @@
 package com.jaagrit.app.ui.history
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,8 +20,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -41,10 +41,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jaagrit.app.R
 import com.jaagrit.app.data.JaagritDatabase
 import com.jaagrit.app.data.model.AlertEvent
 import com.jaagrit.app.data.model.Trip
@@ -73,12 +76,12 @@ fun HistoryScreen(
                 title = {
                     Column {
                         Text(
-                            text = "Trip History",
+                            text = stringResource(R.string.history_title),
                             fontWeight = FontWeight.Bold,
                             fontSize = 20.sp
                         )
                         Text(
-                            text = "यात्रा इतिहास • On-device Room Database",
+                            text = stringResource(R.string.history_subtitle),
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -86,7 +89,12 @@ fun HistoryScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Text(text = "←", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                        Icon(
+                            painter = painterResource(R.drawable.ic_arrow_back),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -114,7 +122,7 @@ fun HistoryScreen(
 
                 item {
                     Text(
-                        text = "Driving Sessions (${trips.size})",
+                        text = stringResource(R.string.history_sessions_header, trips.size),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface,
@@ -162,7 +170,7 @@ private fun HistorySummaryHeader(trips: List<Trip>) {
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
-                text = "Drive Telemetry Overview",
+                text = stringResource(R.string.history_overview),
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -173,18 +181,18 @@ private fun HistorySummaryHeader(trips: List<Trip>) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 SummaryStat(
-                    title = "Total Drives",
-                    value = "${trips.size}",
+                    title = stringResource(R.string.history_total_drives),
+                    value = String.format(Locale.US, "%d", trips.size),
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
                 SummaryStat(
-                    title = "Avg Alertness",
-                    value = "${avgScore.toInt()}%",
+                    title = stringResource(R.string.history_avg_alertness),
+                    value = String.format(Locale.US, "%d%%", avgScore.toInt()),
                     color = if (avgScore >= 70) Color(0xFF1B5E20) else Color(0xFFB71C1C)
                 )
                 SummaryStat(
-                    title = "Total Alerts",
-                    value = "$totalAlerts ($totalCriticals crit)",
+                    title = stringResource(R.string.history_total_alerts),
+                    value = String.format(Locale.US, "%d (%d %s)", totalAlerts, totalCriticals, stringResource(R.string.history_crit_label)),
                     color = if (totalCriticals > 0) Color(0xFFB71C1C) else MaterialTheme.colorScheme.onPrimaryContainer
                 )
             }
@@ -219,19 +227,20 @@ private fun TripCardItem(
     var expanded by remember { mutableStateOf(false) }
     val events by repository.getEventsForTrip(trip.id).collectAsState(initial = emptyList())
 
-    val dateFormatter = remember { SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()) }
+    val dateFormatter = remember { SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.US) }
     val startTimeFormatted = remember(trip.startMs) { dateFormatter.format(Date(trip.startMs)) }
 
-    val durationFormatted = remember(trip.durationMs, trip.isActive) {
+    val activeDriveText = stringResource(R.string.history_active_drive)
+    val durationFormatted = remember(trip.durationMs, trip.isActive, activeDriveText) {
         if (trip.isActive) {
-            "Active Drive 🟢"
+            activeDriveText
         } else {
             val totalSeconds = trip.durationMs / 1000
             val hours = totalSeconds / 3600
             val mins = (totalSeconds % 3600) / 60
             val secs = totalSeconds % 60
-            if (hours > 0) "%dh %02dm %02ds".format(hours, mins, secs)
-            else "%dm %02ds".format(mins, secs)
+            if (hours > 0) String.format(Locale.US, "%dh %02dm %02ds", hours, mins, secs)
+            else String.format(Locale.US, "%dm %02ds", mins, secs)
         }
     }
 
@@ -271,7 +280,7 @@ private fun TripCardItem(
                         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                     ) {
                         Text(
-                            text = "#${trip.id}",
+                            text = String.format(Locale.US, "#%d", trip.id),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
@@ -290,7 +299,12 @@ private fun TripCardItem(
                     onClick = onDeleteTrip,
                     modifier = Modifier.size(24.dp)
                 ) {
-                    Text(text = "✕", fontSize = 14.sp, color = MaterialTheme.colorScheme.outline)
+                    Icon(
+                        painter = painterResource(R.drawable.ic_close),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
 
@@ -301,7 +315,11 @@ private fun TripCardItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text(text = "Duration", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+                    Text(
+                        text = stringResource(R.string.history_duration),
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.outline
+                    )
                     Text(
                         text = durationFormatted,
                         fontSize = 15.sp,
@@ -311,13 +329,17 @@ private fun TripCardItem(
                 }
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(text = "Avg Alertness", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+                    Text(
+                        text = stringResource(R.string.history_avg_alertness),
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.outline
+                    )
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = scoreColor.copy(alpha = 0.15f)
                     ) {
                         Text(
-                            text = if (trip.avgAlertness != null) "$score%" else "N/A",
+                            text = if (trip.avgAlertness != null) String.format(Locale.US, "%d%%", score) else "N/A",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = scoreColor,
@@ -327,9 +349,19 @@ private fun TripCardItem(
                 }
 
                 Column(horizontalAlignment = Alignment.End) {
-                    Text(text = "Alerts", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
                     Text(
-                        text = "${trip.alertCount} (${trip.criticalCount} crit)",
+                        text = stringResource(R.string.stat_alerts),
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    Text(
+                        text = String.format(
+                            Locale.US,
+                            "%d (%d %s)",
+                            trip.alertCount,
+                            trip.criticalCount,
+                            stringResource(R.string.history_crit_label)
+                        ),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = if (trip.alertCount > 0) Color(0xFFD32F2F) else MaterialTheme.colorScheme.onSurface
@@ -343,17 +375,44 @@ private fun TripCardItem(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = if (events.isNotEmpty()) "⚠️ ${events.size} logged events" else "✅ 0 logged events",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.outline
-                )
-                Text(
-                    text = if (expanded) "Hide details ▲" else "Tap for events ▼",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(if (events.isNotEmpty()) R.drawable.ic_warning else R.drawable.ic_check),
+                        contentDescription = null,
+                        tint = if (events.isNotEmpty()) Color(0xFFE65100) else Color(0xFF2E7D32),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = if (events.isNotEmpty()) {
+                            stringResource(R.string.history_events_logged, events.size)
+                        } else {
+                            stringResource(R.string.history_events_none)
+                        },
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = stringResource(if (expanded) R.string.history_hide_details else R.string.history_tap_details),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Icon(
+                        painter = painterResource(if (expanded) R.drawable.ic_expand_less else R.drawable.ic_expand_more),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
 
             // Expanded Event List
@@ -364,11 +423,11 @@ private fun TripCardItem(
                         .padding(top = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
                     if (events.isEmpty()) {
                         Text(
-                            text = "No alert events recorded during this session.",
+                            text = stringResource(R.string.history_no_events),
                             fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.outline,
                             modifier = Modifier.padding(vertical = 4.dp)
@@ -386,7 +445,7 @@ private fun TripCardItem(
 
 @Composable
 private fun AlertEventItem(event: AlertEvent) {
-    val timeFormatter = remember { SimpleDateFormat("hh:mm:ss a", Locale.getDefault()) }
+    val timeFormatter = remember { SimpleDateFormat("hh:mm:ss a", Locale.US) }
     val eventTime = remember(event.tsMs) { timeFormatter.format(Date(event.tsMs)) }
 
     val levelColor = when (event.level) {
@@ -465,7 +524,7 @@ private fun AlertEventItem(event: AlertEvent) {
 
                 if (event.durationMs > 0L) {
                     Text(
-                        text = "Duration: ${"%.1f".format(event.durationMs / 1000.0)}s",
+                        text = String.format(Locale.US, "Duration: %.1fs", event.durationMs / 1000.0),
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -505,20 +564,25 @@ private fun EmptyHistoryView(modifier: Modifier = Modifier) {
             modifier = Modifier.size(80.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Text(text = "📜", fontSize = 36.sp)
+                Icon(
+                    painter = painterResource(R.drawable.ic_history),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(36.dp)
+                )
             }
         }
 
         Spacer(modifier = Modifier.height(18.dp))
         Text(
-            text = "No Driving Sessions Yet",
+            text = stringResource(R.string.history_empty_title),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold
         )
 
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Start a drive to automatically record 5-second alertness telemetry and fatigue interventions offline.",
+            text = stringResource(R.string.history_empty_desc),
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.outline,
             textAlign = TextAlign.Center
