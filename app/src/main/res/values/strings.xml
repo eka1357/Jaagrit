@@ -18,9 +18,24 @@
     <string name="btn_im_awake">I\'M AWAKE</string>
     <string name="im_awake_hint">Tap button to stop alarm and cancel SMS</string>
 
-    <!-- Home Screen -->
+    <!-- Home Screen (Horizon Redesign) -->
+    <string name="home_headline">Stay alert.\nDrive safe.</string>
+    <string name="home_hero_subtitle">Real-time driver fatigue estimation</string>
     <string name="home_subtitle">Offline Driver Alertness Assistant</string>
     <string name="badge_offline">ON-DEVICE • OFFLINE</string>
+    <string name="readiness_title">System Readiness</string>
+    <string name="readiness_camera">Camera</string>
+    <string name="readiness_calibration">Calibration</string>
+    <string name="readiness_sms">Emergency SMS</string>
+    <string name="readiness_hindi_voice">Hindi voice</string>
+    <string name="status_calibrated">Calibrated</string>
+    <string name="status_not_calibrated">Not calibrated</string>
+    <string name="status_install_needed">install needed</string>
+    <string name="notice_sms_unavailable_fallback">Emergency SMS is unavailable. Alarm and voice alerts still work.</string>
+    <string name="home_footer_offline_lock">Works offline. Photos and audio are never saved.</string>
+    <string name="btn_history_short">History</string>
+    <string name="btn_recalibrate_short">Recalibrate</string>
+    <string name="btn_calibrate_short">Calibrate</string>
     <string name="profile_calibrated">Profile Calibrated (Threshold: %s)</string>
     <string name="profile_default">Default Profile (Uncalibrated)</string>
     <string name="checklist_title">Drive Readiness Checklist</string>
@@ -30,9 +45,9 @@
     <string name="checklist_contact">Emergency Contact</string>
     <string name="status_ready">ready</string>
     <string name="status_permission_needed">permission needed</string>
-    <string name="status_no_sim">no SIM card</string>
-    <string name="status_airplane_mode">airplane mode on</string>
-    <string name="status_contact_not_set">not set in Settings</string>
+    <string name="status_no_sim">no SIM</string>
+    <string name="status_airplane_mode">airplane mode</string>
+    <string name="status_contact_not_set">contact not set</string>
     <string name="notice_sms_cellular">Emergency SMS requires cellular mobile signal — airplane mode blocks delivery</string>
     <string name="notice_offline_guarantee">100% on-device &amp; offline • Cellular SMS radio only</string>
     <string name="btn_start_drive">Start Drive</string>

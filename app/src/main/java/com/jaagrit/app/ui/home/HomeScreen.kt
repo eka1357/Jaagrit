@@ -1,20 +1,32 @@
 package com.jaagrit.app.ui.home
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import android.speech.SpeechRecognizer
+import android.provider.Settings
+import android.speech.tts.TextToSpeech
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -22,9 +34,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -38,7 +50,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -55,8 +72,13 @@ import com.jaagrit.app.data.BaselineStore
 import com.jaagrit.app.data.SettingsStore
 import com.jaagrit.app.sms.SmsAvailability
 import com.jaagrit.app.sms.SmsNotifier
-import com.jaagrit.app.ui.components.JaagritBrandHeader
 import com.jaagrit.app.ui.components.LanguageSwitch
+import com.jaagrit.app.ui.theme.HorizonAmber
+import com.jaagrit.app.ui.theme.HorizonForest
+import com.jaagrit.app.ui.theme.HorizonIvory
+import com.jaagrit.app.ui.theme.HorizonLime
+import com.jaagrit.app.ui.theme.HorizonMuted
+import com.jaagrit.app.ui.theme.MuktaFontFamily
 import java.util.Locale
 
 @Composable
@@ -77,8 +99,8 @@ fun HomeScreen(
     val emergencyContact by settingsStore.emergencyContactFlow.collectAsState(initial = "")
 
     var showUncalibratedDialog by remember { mutableStateOf(false) }
-
     var resumeTick by remember { mutableStateOf(0) }
+
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -90,33 +112,52 @@ fun HomeScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) {
+        resumeTick++
+    }
+
     val hasCamera = remember(resumeTick) {
         ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
     }
-    val hasLocation = remember(resumeTick) {
-        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-    }
+
     val smsAvailability = remember(resumeTick, emergencyContact) {
         smsNotifier.checkAvailability()
     }
-    val voiceStatus = remember(resumeTick) {
-        val hasAudio = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        if (!hasAudio) {
-            VoiceStatus.PERMISSION_NEEDED
-        } else {
-            val onDeviceAvailable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
-            } else {
-                SpeechRecognizer.isRecognitionAvailable(context)
+
+    // Detect offline Hindi voice presence via TextToSpeech
+    var isHindiVoiceReady by remember { mutableStateOf(false) }
+    DisposableEffect(context, resumeTick) {
+        var ttsInstance: TextToSpeech? = null
+        try {
+            ttsInstance = TextToSpeech(context.applicationContext) { status ->
+                if (status == TextToSpeech.SUCCESS) {
+                    val locale = Locale.forLanguageTag("hi-IN")
+                    val langResult = ttsInstance?.isLanguageAvailable(locale) ?: TextToSpeech.LANG_NOT_SUPPORTED
+                    val hasLang = langResult != TextToSpeech.LANG_MISSING_DATA &&
+                            langResult != TextToSpeech.LANG_NOT_SUPPORTED
+                    val hasVoice = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        ttsInstance?.voices?.any { voice ->
+                            (voice.locale.language == "hi" || voice.locale.toLanguageTag().startsWith("hi")) &&
+                                    !voice.isNetworkConnectionRequired
+                        } ?: hasLang
+                    } else {
+                        hasLang
+                    }
+                    isHindiVoiceReady = hasVoice
+                }
             }
-            if (onDeviceAvailable) {
-                VoiceStatus.READY
-            } else {
-                VoiceStatus.OFFLINE_PACK_MISSING
-            }
+        } catch (_: Exception) {
+            isHindiVoiceReady = false
+        }
+        onDispose {
+            ttsInstance?.shutdown()
         }
     }
+
+    val isCalibrated = baseline?.isValid == true
+    val isSmsUnavailable = smsAvailability != SmsAvailability.READY || emergencyContact.isBlank()
 
     if (showUncalibratedDialog) {
         AlertDialog(
@@ -124,13 +165,17 @@ fun HomeScreen(
             title = {
                 Text(
                     text = stringResource(R.string.dialog_uncalibrated_title),
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = MuktaFontFamily,
+                    color = HorizonForest
                 )
             },
             text = {
                 Text(
                     text = stringResource(R.string.dialog_uncalibrated_body),
-                    fontSize = 14.sp
+                    fontSize = 14.sp,
+                    fontFamily = MuktaFontFamily,
+                    color = HorizonForest.copy(alpha = 0.9f)
                 )
             },
             confirmButton = {
@@ -138,9 +183,16 @@ fun HomeScreen(
                     onClick = {
                         showUncalibratedDialog = false
                         onNavigateToCalibration()
-                    }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = HorizonForest,
+                        contentColor = Color.White
+                    )
                 ) {
-                    Text(stringResource(R.string.dialog_btn_calibrate_now))
+                    Text(
+                        text = stringResource(R.string.dialog_btn_calibrate_now),
+                        fontFamily = MuktaFontFamily
+                    )
                 }
             },
             dismissButton = {
@@ -148,447 +200,551 @@ fun HomeScreen(
                     onClick = {
                         showUncalibratedDialog = false
                         onStartDrive()
-                    }
+                    },
+                    border = BorderStroke(1.dp, HorizonMuted),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = HorizonForest
+                    )
                 ) {
-                    Text(stringResource(R.string.dialog_btn_start_defaults))
+                    Text(
+                        text = stringResource(R.string.dialog_btn_start_defaults),
+                        fontFamily = MuktaFontFamily
+                    )
                 }
-            }
+            },
+            containerColor = HorizonIvory
         )
     }
 
     Scaffold(
+        containerColor = HorizonIvory,
+        contentWindowInsets = WindowInsets.safeDrawing,
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(20.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.SpaceBetween,
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Header Section: History, Brand, Language Toggle, Settings
-            Column(
+            // 1. Top Bar: Wordmark on left, LanguageToggle and Settings on right
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(bottom = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // History Icon
-                    IconButton(onClick = onNavigateToHistory) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.padding(2.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_history),
-                                contentDescription = stringResource(R.string.history_title),
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier
-                                    .padding(8.dp)
-                                    .size(22.dp)
-                            )
-                        }
-                    }
+                Column(horizontalAlignment = Alignment.Start) {
+                    Text(
+                        text = "JAAGRIT",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = MuktaFontFamily,
+                        color = HorizonForest,
+                        lineHeight = 22.sp
+                    )
+                    Text(
+                        text = "जागृत",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = MuktaFontFamily,
+                        color = HorizonForest.copy(alpha = 0.75f),
+                        lineHeight = 14.sp,
+                        letterSpacing = 0.sp
+                    )
+                }
 
-                    // Brand: JAAGRIT with जागृत as a small separate text below
-                    JaagritBrandHeader(
-                        wordmarkSize = 36.sp,
-                        subSize = 16.sp
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    LanguageSwitch(
+                        currentLanguage = currentLanguage,
+                        onLanguageSelected = onLanguageChange
                     )
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    IconButton(
+                        onClick = onNavigateToSettings,
+                        modifier = Modifier.size(48.dp)
                     ) {
-                        // Language switch toggle
-                        LanguageSwitch(
-                            currentLanguage = currentLanguage,
-                            onLanguageSelected = onLanguageChange
-                        )
-
-                        // Settings Icon
-                        IconButton(onClick = onNavigateToSettings) {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier.padding(2.dp)
-                            ) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = HorizonMuted.copy(alpha = 0.55f),
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     painter = painterResource(R.drawable.ic_settings),
                                     contentDescription = stringResource(R.string.settings_title),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier
-                                        .padding(8.dp)
-                                        .size(22.dp)
+                                    tint = HorizonForest,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2 & 3. Middle Content: Hero + Readiness Card + Fallback Note
+            // Scrolls at font scale > 1.0 or on compact screens, while Start Drive stays pinned
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                // Hero Section: BrandMark + 2-line headline + short subtitle
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(bottom = 14.dp)
+                ) {
+                    EyeHorizonBrandMark(
+                        modifier = Modifier.size(120.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = stringResource(R.string.home_headline),
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = MuktaFontFamily,
+                        color = HorizonForest,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 28.sp,
+                        letterSpacing = 0.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = stringResource(R.string.home_hero_subtitle),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Normal,
+                        fontFamily = MuktaFontFamily,
+                        color = HorizonForest.copy(alpha = 0.75f),
+                        textAlign = TextAlign.Center,
+                        lineHeight = 16.sp
+                    )
+                }
+
+                // Readiness Card with 4 compact 48dp rows
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, HorizonMuted)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        // Row 1: Camera
+                        ReadinessRow(
+                            iconRes = R.drawable.ic_camera,
+                            label = stringResource(R.string.readiness_camera),
+                            statusText = stringResource(if (hasCamera) R.string.status_ready else R.string.status_permission_needed),
+                            isReady = hasCamera,
+                            onClick = {
+                                if (!hasCamera) {
+                                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                }
+                            }
+                        )
+
+                        HorizontalDivider(
+                            color = HorizonMuted.copy(alpha = 0.6f),
+                            thickness = 1.dp
+                        )
+
+                        // Row 2: Calibration
+                        ReadinessRow(
+                            iconRes = R.drawable.ic_tune,
+                            label = stringResource(R.string.readiness_calibration),
+                            statusText = stringResource(if (isCalibrated) R.string.status_calibrated else R.string.status_not_calibrated),
+                            isReady = isCalibrated,
+                            onClick = onNavigateToCalibration
+                        )
+
+                        HorizontalDivider(
+                            color = HorizonMuted.copy(alpha = 0.6f),
+                            thickness = 1.dp
+                        )
+
+                        // Row 3: Emergency SMS (merged contact + SMS state)
+                        val (smsText, smsReady) = when {
+                            emergencyContact.isBlank() -> Pair(stringResource(R.string.status_contact_not_set), false)
+                            smsAvailability == SmsAvailability.READY -> Pair(stringResource(R.string.status_ready), true)
+                            smsAvailability == SmsAvailability.NO_SIM -> Pair(stringResource(R.string.status_no_sim), false)
+                            smsAvailability == SmsAvailability.NO_PERMISSION -> Pair(stringResource(R.string.status_permission_needed), false)
+                            smsAvailability == SmsAvailability.AIRPLANE_MODE -> Pair(stringResource(R.string.status_airplane_mode), false)
+                            else -> Pair(stringResource(R.string.status_contact_not_set), false)
+                        }
+
+                        ReadinessRow(
+                            iconRes = R.drawable.ic_sms,
+                            label = stringResource(R.string.readiness_sms),
+                            statusText = smsText,
+                            isReady = smsReady,
+                            onClick = onNavigateToSettings
+                        )
+
+                        HorizontalDivider(
+                            color = HorizonMuted.copy(alpha = 0.6f),
+                            thickness = 1.dp
+                        )
+
+                        // Row 4: Hindi voice
+                        ReadinessRow(
+                            iconRes = R.drawable.ic_volume_up,
+                            label = stringResource(R.string.readiness_hindi_voice),
+                            statusText = stringResource(if (isHindiVoiceReady) R.string.status_ready else R.string.status_install_needed),
+                            isReady = isHindiVoiceReady,
+                            onClick = {
+                                try {
+                                    context.startActivity(Intent("com.android.settings.TTS_SETTINGS"))
+                                } catch (_: Exception) {
+                                    try {
+                                        context.startActivity(Intent(Settings.ACTION_SETTINGS))
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                        )
+                    }
+                }
+
+                // One amber line when Emergency SMS is unavailable (only when relevant)
+                if (isSmsUnavailable) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp, start = 4.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_warning),
+                            contentDescription = null,
+                            tint = HorizonAmber,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.notice_sms_unavailable_fallback),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            fontFamily = MuktaFontFamily,
+                            color = Color(0xFF8D5B00),
+                            lineHeight = 15.sp
+                        )
+                    }
+                }
+            }
+
+            // 6. Pinned Bottom Section
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Primary "Start Drive" button: forest fill, white text, lime circular arrow, 64dp
+                Button(
+                    onClick = {
+                        if (!isCalibrated) {
+                            showUncalibratedDialog = true
+                        } else {
+                            onStartDrive()
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(64.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = HorizonForest,
+                        contentColor = Color.White
+                    ),
+                    contentPadding = PaddingValues(start = 24.dp, end = 12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = stringResource(R.string.btn_start_drive),
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = MuktaFontFamily,
+                            color = Color.White
+                        )
+
+                        Surface(
+                            shape = CircleShape,
+                            color = HorizonLime,
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_arrow_forward),
+                                    contentDescription = null,
+                                    tint = HorizonForest,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = stringResource(R.string.home_subtitle),
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.outline,
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Calibration Status Chip
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = if (baseline?.isValid == true) Color(0xFFE8F5E9) else Color(0xFFFFF3E0)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = if (baseline?.isValid == true) Color(0xFF2E7D32) else Color(0xFFE65100),
-                            modifier = Modifier.size(8.dp)
-                        ) {}
-
-                        val chipText = if (baseline?.isValid == true) {
-                            stringResource(
-                                R.string.profile_calibrated,
-                                String.format(Locale.US, "%.3f", baseline!!.threshold)
-                            )
-                        } else {
-                            stringResource(R.string.profile_default)
-                        }
-
-                        Text(
-                            text = chipText,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (baseline?.isValid == true) Color(0xFF1B5E20) else Color(0xFFBF360C)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Drive Readiness Checklist Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.checklist_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    // Line 1: Camera
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_camera),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = stringResource(R.string.checklist_camera),
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Text(
-                            text = stringResource(if (hasCamera) R.string.status_ready else R.string.status_permission_needed),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (hasCamera) Color(0xFF2E7D32) else Color(0xFFE65100)
-                        )
-                    }
-
-                    // Line 2: Emergency SMS
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_sms),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = stringResource(R.string.checklist_sms),
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        val smsStatusText = when (smsAvailability) {
-                            SmsAvailability.READY -> stringResource(R.string.status_ready)
-                            SmsAvailability.NO_SIM -> stringResource(R.string.status_no_sim)
-                            SmsAvailability.NO_PERMISSION -> stringResource(R.string.status_permission_needed)
-                            SmsAvailability.AIRPLANE_MODE -> stringResource(R.string.status_airplane_mode)
-                            SmsAvailability.NO_CONTACT -> stringResource(R.string.status_contact_not_set)
-                        }
-
-                        Text(
-                            text = smsStatusText,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (smsAvailability == SmsAvailability.READY) Color(0xFF2E7D32) else Color(0xFFE65100)
-                        )
-                    }
-
-                    // Line 3: Location (GPS)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_location),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = stringResource(R.string.checklist_location),
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Text(
-                            text = stringResource(if (hasLocation) R.string.status_ready else R.string.status_permission_needed),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (hasLocation) Color(0xFF2E7D32) else Color(0xFFE65100)
-                        )
-                    }
-
-                    // Line 4: Voice Commands (M8)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_mic),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = stringResource(R.string.checklist_voice),
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        val (voiceStatusText, voiceColor) = when (voiceStatus) {
-                            VoiceStatus.READY -> Pair(stringResource(R.string.status_ready), Color(0xFF2E7D32))
-                            VoiceStatus.PERMISSION_NEEDED -> Pair(stringResource(R.string.status_permission_needed), Color(0xFFE65100))
-                            VoiceStatus.OFFLINE_PACK_MISSING -> Pair(stringResource(R.string.status_offline_pack_missing), Color(0xFFE65100))
-                        }
-
-                        Text(
-                            text = voiceStatusText,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = voiceColor
-                        )
-                    }
-
-                    // Line 5: Emergency Contact
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_lock),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = stringResource(R.string.checklist_contact),
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Text(
-                            text = if (emergencyContact.isNotBlank()) SettingsStore.maskPhoneNumber(emergencyContact) else stringResource(R.string.status_contact_not_set),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (emergencyContact.isNotBlank()) Color(0xFF2E7D32) else Color(0xFFE65100)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(2.dp))
-
-                    Row(
-                        verticalAlignment = Alignment.Top,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_warning),
-                            contentDescription = null,
-                            tint = Color(0xFFC62828),
-                            modifier = Modifier
-                                .size(14.dp)
-                                .padding(top = 2.dp)
-                        )
-                        Text(
-                            text = stringResource(R.string.notice_sms_cellular),
-                            fontSize = 11.sp,
-                            color = Color(0xFFC62828),
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.Top,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_lock),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier
-                                .size(14.dp)
-                                .padding(top = 2.dp)
-                        )
-                        Text(
-                            text = stringResource(R.string.notice_offline_guarantee),
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Action Buttons
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Primary Start Drive Button (Checks calibration first)
-                Button(
-                    onClick = {
-                        if (baseline?.isValid == true) {
-                            onStartDrive()
-                        } else {
-                            showUncalibratedDialog = true
-                        }
-                    },
+                // Two equal text buttons: History & Recalibrate (48dp each)
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    )
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text(
-                        text = stringResource(R.string.btn_start_drive),
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                // Calibrate / Recalibrate Button
-                OutlinedButton(
-                    onClick = onNavigateToCalibration,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Text(
-                        text = stringResource(if (baseline?.isValid == true) R.string.btn_recalibrate else R.string.btn_calibrate),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-
-                // Trip History Button
-                OutlinedButton(
-                    onClick = onNavigateToHistory,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_history),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
+                    OutlinedButton(
+                        onClick = onNavigateToHistory,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, HorizonMuted),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = HorizonForest
                         )
+                    ) {
                         Text(
-                            text = stringResource(R.string.btn_trip_history),
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold
+                            text = stringResource(R.string.btn_history_short),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = MuktaFontFamily,
+                            color = HorizonForest
                         )
                     }
+
+                    OutlinedButton(
+                        onClick = onNavigateToCalibration,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, HorizonMuted),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = HorizonForest
+                        )
+                    ) {
+                        Text(
+                            text = stringResource(
+                                if (isCalibrated) R.string.btn_recalibrate_short else R.string.btn_calibrate_short
+                            ),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = MuktaFontFamily,
+                            color = HorizonForest
+                        )
+                    }
+                }
+
+                // Offline lock line
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp, bottom = 2.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_lock),
+                        contentDescription = null,
+                        tint = HorizonForest.copy(alpha = 0.6f),
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(R.string.home_footer_offline_lock),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Normal,
+                        fontFamily = MuktaFontFamily,
+                        color = HorizonForest.copy(alpha = 0.7f),
+                        textAlign = TextAlign.Center
+                    )
                 }
             }
         }
     }
 }
 
-private enum class VoiceStatus {
-    READY,
-    PERMISSION_NEEDED,
-    OFFLINE_PACK_MISSING
+/**
+ * Single 48dp readiness row inside the Readiness Card.
+ * Uses icon + label on left, status icon + text on right.
+ * Entire row is a 48dp touch target and clickable if action is needed.
+ */
+@Composable
+private fun ReadinessRow(
+    iconRes: Int,
+    label: String,
+    statusText: String,
+    isReady: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        // Left: Row icon + label
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                tint = HorizonForest,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = label,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = MuktaFontFamily,
+                color = HorizonForest
+            )
+        }
+
+        // Right: Status icon + status text
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(
+                painter = painterResource(if (isReady) R.drawable.ic_check else R.drawable.ic_warning),
+                contentDescription = null,
+                tint = if (isReady) HorizonForest else HorizonAmber,
+                modifier = Modifier.size(15.dp)
+            )
+            Text(
+                text = statusText,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = MuktaFontFamily,
+                color = if (isReady) HorizonForest else Color(0xFF8D5B00)
+            )
+        }
+    }
+}
+
+/**
+ * Bespoke Canvas-drawn eye-and-horizon BrandMark (~120dp).
+ * Harmonious geometric composition of the eye contour (vigilance)
+ * meeting the highway perspective and rising horizon in Horizon tokens.
+ */
+@Composable
+fun EyeHorizonBrandMark(
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+
+        // 1. Soft circular base dish
+        drawCircle(
+            color = HorizonMuted,
+            radius = w * 0.46f,
+            center = Offset(w * 0.5f, h * 0.5f)
+        )
+
+        // 2. Horizon line (road meeting the sky)
+        val horizonY = h * 0.52f
+        drawLine(
+            color = HorizonForest,
+            start = Offset(w * 0.16f, horizonY),
+            end = Offset(w * 0.84f, horizonY),
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+
+        // Road perspective vanishing into the horizon
+        val roadPath = Path().apply {
+            moveTo(w * 0.38f, h * 0.84f)
+            lineTo(w * 0.48f, horizonY)
+            lineTo(w * 0.52f, horizonY)
+            lineTo(w * 0.62f, h * 0.84f)
+            close()
+        }
+        drawPath(
+            path = roadPath,
+            color = HorizonForest.copy(alpha = 0.10f)
+        )
+
+        // Lime centerline on the highway
+        drawLine(
+            color = HorizonLime,
+            start = Offset(w * 0.5f, h * 0.82f),
+            end = Offset(w * 0.5f, horizonY + 5.dp.toPx()),
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+
+        // 3. Eye Contour: Upper and lower eyelid arcs
+        val leftCornerX = w * 0.20f
+        val rightCornerX = w * 0.80f
+        val midY = h * 0.48f
+
+        val upperLid = Path().apply {
+            moveTo(leftCornerX, midY)
+            quadraticTo(
+                w * 0.50f, h * 0.20f,
+                rightCornerX, midY
+            )
+        }
+        drawPath(
+            path = upperLid,
+            color = HorizonForest,
+            style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round)
+        )
+
+        val lowerLid = Path().apply {
+            moveTo(leftCornerX, midY)
+            quadraticTo(
+                w * 0.50f, h * 0.76f,
+                rightCornerX, midY
+            )
+        }
+        drawPath(
+            path = lowerLid,
+            color = HorizonForest,
+            style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round)
+        )
+
+        // 4. Iris (Forest vigilance)
+        val irisRadius = w * 0.165f
+        drawCircle(
+            color = HorizonForest,
+            radius = irisRadius,
+            center = Offset(w * 0.5f, midY)
+        )
+
+        // 5. Center Pupil (Vibrant Lime Alert Core)
+        val pupilRadius = w * 0.082f
+        drawCircle(
+            color = HorizonLime,
+            radius = pupilRadius,
+            center = Offset(w * 0.5f, midY)
+        )
+
+        // 6. Specular catchlight
+        drawCircle(
+            color = Color.White,
+            radius = w * 0.024f,
+            center = Offset(w * 0.53f, midY - w * 0.032f)
+        )
+    }
 }
