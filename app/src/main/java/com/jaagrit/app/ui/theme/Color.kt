@@ -9,3 +9,10 @@ val Pink80 = Color(0xFFEFB8C8)
 val Purple40 = Color(0xFF6650a4)
 val PurpleGrey40 = Color(0xFF625b71)
 val Pink40 = Color(0xFF7D5260)
+
+// Horizon Design Tokens
+val HorizonIvory = Color(0xFFF4F0E6)
+val HorizonForest = Color(0xFF18392B)
+val HorizonLime = Color(0xFFB9EE45)
+val HorizonMuted = Color(0xFFE8E1D3)
+val HorizonAmber = Color(0xFFFFB74D)

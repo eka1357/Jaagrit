@@ -18,9 +18,24 @@
     <string name="btn_im_awake">मैं जाग रहा हूँ</string>
     <string name="im_awake_hint">अलार्म बंद करने और एसएमएस रोकने के लिए दबाएँ</string>
 
-    <!-- Home Screen -->
+    <!-- Home Screen (Horizon Redesign) -->
+    <string name="home_headline">सजग रहें।\nसुरक्षित चलें।</string>
+    <string name="home_hero_subtitle">वास्तविक समय चालक सतर्कता सहायक</string>
     <string name="home_subtitle">ऑफ़लाइन ड्राइवर सतर्कता सहायक</string>
     <string name="badge_offline">ऑन-डिवाइस • ऑफ़लाइन</string>
+    <string name="readiness_title">सिस्टम तैयारी</string>
+    <string name="readiness_camera">कैमरा</string>
+    <string name="readiness_calibration">कैलिब्रेशन</string>
+    <string name="readiness_sms">आपातकालीन एसएमएस</string>
+    <string name="readiness_hindi_voice">हिंदी आवाज़</string>
+    <string name="status_calibrated">कैलिब्रेटेड</string>
+    <string name="status_not_calibrated">कैलिब्रेट नहीं</string>
+    <string name="status_install_needed">इंस्टॉल आवश्यक</string>
+    <string name="notice_sms_unavailable_fallback">आपातकालीन एसएमएस अनुपलब्ध है। अलार्म और आवाज़ अलर्ट काम करेंगे।</string>
+    <string name="home_footer_offline_lock">ऑफ़लाइन काम करता है। फ़ोटो और ऑडियो कभी सेव नहीं होते।</string>
+    <string name="btn_history_short">इतिहास</string>
+    <string name="btn_recalibrate_short">दोबारा कैलिब्रेट करें</string>
+    <string name="btn_calibrate_short">कैलिब्रेट करें</string>
     <string name="profile_calibrated">प्रोफ़ाइल कैलिब्रेटेड (सीमा: %s)</string>
     <string name="profile_default">डिफ़ॉल्ट प्रोफ़ाइल</string>
     <string name="checklist_title">ड्राइव तैयारी चेकलिस्ट</string>
@@ -30,9 +45,9 @@
     <string name="checklist_contact">आपातकालीन संपर्क</string>
     <string name="status_ready">तैयार</string>
     <string name="status_permission_needed">अनुमति चाहिए</string>
-    <string name="status_no_sim">सिम कार्ड नहीं है</string>
-    <string name="status_airplane_mode">हवाई मोड चालू है</string>
-    <string name="status_contact_not_set">सेटिंग्स में सेट नहीं है</string>
+    <string name="status_no_sim">सिम नहीं है</string>
+    <string name="status_airplane_mode">हवाई मोड</string>
+    <string name="status_contact_not_set">संपर्क सेट नहीं</string>
     <string name="notice_sms_cellular">आपातकालीन एसएमएस के लिए मोबाइल सिग्नल ज़रूरी है — हवाई मोड में एसएमएस नहीं जाएगा</string>
     <string name="notice_offline_guarantee">100% ऑन-डिवाइस और ऑफ़लाइन • केवल मोबाइल नेटवर्क</string>
     <string name="btn_start_drive">ड्राइव शुरू करें</string>
