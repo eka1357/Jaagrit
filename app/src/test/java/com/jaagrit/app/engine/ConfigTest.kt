@@ -67,20 +67,27 @@ class ConfigTest {
 
     @Test
     fun verifyDemoModeShortensTimers() {
-        val normalConfig = Config(demoTimers = false)
-        val demoConfig = Config(demoTimers = true)
+        val normalConfig = Config(demoTimers = false, quickCalibration = false)
+        val demoConfig = Config(demoTimers = true, quickCalibration = false)
+        val quickCalibConfig = Config(demoTimers = false, quickCalibration = true)
 
+        // DEMO_TIMERS affects only L4 (5s vs 10s) and L5 (8s vs 20s) (D9)
         assertEquals(10000L, normalConfig.l4AfterL3Ms)
         assertEquals(5000L, demoConfig.l4AfterL3Ms)
 
         assertEquals(20000L, normalConfig.l5AfterL4Ms)
         assertEquals(8000L, demoConfig.l5AfterL4Ms)
 
+        // Normal calibration timers unaffected by demoTimers
+        assertEquals(10000L, demoConfig.calibrationOpenMs)
+        assertEquals(3000L, demoConfig.calibrationClosedMs)
+
+        // QUICK_CALIBRATION is a separate flag (D9)
         assertEquals(10000L, normalConfig.calibrationOpenMs)
-        assertEquals(5000L, demoConfig.calibrationOpenMs)
+        assertEquals(5000L, quickCalibConfig.calibrationOpenMs)
 
         assertEquals(3000L, normalConfig.calibrationClosedMs)
-        assertEquals(2000L, demoConfig.calibrationClosedMs)
+        assertEquals(2000L, quickCalibConfig.calibrationClosedMs)
     }
 
     @Test

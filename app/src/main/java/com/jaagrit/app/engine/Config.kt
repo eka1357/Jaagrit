@@ -7,8 +7,10 @@ package com.jaagrit.app.engine
  * Requirements reference: docs/REQUIREMENTS.md & docs/DECISIONS.md
  */
 data class Config(
-    // Flag for demo mode (shortened timers for faster live demos)
+    // Flag for demo mode (shortened L4/L5 timers for faster live demos, D9)
     val demoTimers: Boolean = false,
+    // Separate flag for quick calibration (open 5s, closed 2s, D9)
+    val quickCalibration: Boolean = false,
 
     // Eye closure detection (ENG-1, LAD-1)
     // Continuous eye closure duration required to confirm a microsleep / critical event
@@ -21,10 +23,6 @@ data class Config(
     val faceLostReminderMs: Long = FACE_LOST_REMINDER_MS,
 
     // Intervention ladder timers (LAD-1, LAD-3, LAD-4)
-    // Delay after L3 alarm with no response before escalating to L4 (family voice clip)
-    val l4AfterL3Ms: Long = if (demoTimers) L4_AFTER_L3_DEMO_MS else L4_AFTER_L3_MS,
-    // Delay after L4 family clip with no response before escalating to L5 (emergency SMS)
-    val l5AfterL4Ms: Long = if (demoTimers) L5_AFTER_L4_DEMO_MS else L5_AFTER_L4_MS,
     // Cooldown period preventing immediate repeat of L3 alarm unless condition worsens
     val l3RepeatCooldownMs: Long = L3_REPEAT_COOLDOWN_MS,
 
@@ -69,8 +67,6 @@ data class Config(
     val blinkSignalEnabled: Boolean = BLINK_SIGNAL_ENABLED,
 
     // Calibration settings (CAL-1, D4, D9)
-    val calibrationOpenMs: Long = if (demoTimers) QUICK_CALIBRATION_OPEN_MS else CALIBRATION_OPEN_MS,
-    val calibrationClosedMs: Long = if (demoTimers) QUICK_CALIBRATION_CLOSED_MS else CALIBRATION_CLOSED_MS,
     val calibrationYawnMs: Long = CALIBRATION_YAWN_MS,
     val calibrationHeadPoseMs: Long = CALIBRATION_HEAD_POSE_MS,
     // Initial reaction window ignored during each calibration phase
@@ -109,6 +105,19 @@ data class Config(
     val alertnessBandFatiguedMin: Int = ALERTNESS_BAND_FATIGUED_MIN,
     val alertnessBandCriticalMax: Int = ALERTNESS_BAND_CRITICAL_MAX
 ) {
+    // Dynamic timer properties derived from demoTimers and quickCalibration flags (D9)
+    val l4AfterL3Ms: Long
+        get() = if (demoTimers) L4_AFTER_L3_DEMO_MS else L4_AFTER_L3_MS
+
+    val l5AfterL4Ms: Long
+        get() = if (demoTimers) L5_AFTER_L4_DEMO_MS else L5_AFTER_L4_MS
+
+    val calibrationOpenMs: Long
+        get() = if (quickCalibration) QUICK_CALIBRATION_OPEN_MS else CALIBRATION_OPEN_MS
+
+    val calibrationClosedMs: Long
+        get() = if (quickCalibration) QUICK_CALIBRATION_CLOSED_MS else CALIBRATION_CLOSED_MS
+
     companion object {
         // --- Core Timers & Thresholds ---
         const val CLOSURE_CONFIRM_MS = 2500L

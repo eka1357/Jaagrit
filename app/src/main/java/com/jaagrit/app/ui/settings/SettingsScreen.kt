@@ -39,7 +39,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.KeyboardType
 import com.jaagrit.app.data.BaselineStore
+import com.jaagrit.app.data.SettingsStore
 import com.jaagrit.app.engine.Baseline
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -47,8 +55,9 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Settings and Privacy Screen (PRODUCT.md, CAL-4).
- * Displays active baseline metrics with a Recalibrate button.
+ * Settings and Privacy Screen (PRODUCT.md, CAL-4, LAD-4, D6, D9).
+ * Displays active baseline metrics with a Recalibrate button,
+ * emergency contact configuration for L5 SMS, and demo flags.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,7 +69,22 @@ fun SettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val baselineStore = remember { BaselineStore(context) }
+    val settingsStore = remember { SettingsStore(context) }
+
     val baseline by baselineStore.baselineFlow.collectAsState(initial = null)
+    val savedDriverName by settingsStore.driverNameFlow.collectAsState(initial = SettingsStore.DEFAULT_DRIVER_NAME)
+    val savedEmergencyContact by settingsStore.emergencyContactFlow.collectAsState(initial = "")
+    val demoTimers by settingsStore.demoTimersFlow.collectAsState(initial = false)
+    val quickCalibration by settingsStore.quickCalibrationFlow.collectAsState(initial = false)
+
+    var inputDriverName by remember { mutableStateOf("") }
+    var inputEmergencyContact by remember { mutableStateOf("") }
+    var saveSuccessMessage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(savedDriverName, savedEmergencyContact) {
+        inputDriverName = savedDriverName
+        inputEmergencyContact = savedEmergencyContact
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -206,6 +230,177 @@ fun SettingsScreen(
                                 fontSize = 13.sp
                             )
                         }
+                    }
+                }
+            }
+
+            // Emergency Contact & Profile Card (LAD-4, D6)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Text(
+                        text = "Emergency Contact (Level 5 Alert)",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = "If you become unresponsive during driving (after L3 alarm and L4 family voice), Jaagrit sends an emergency SMS with your last known GPS coordinates to this phone number.",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = inputDriverName,
+                        onValueChange = {
+                            inputDriverName = it
+                            saveSuccessMessage = null
+                        },
+                        label = { Text("Driver Name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = inputEmergencyContact,
+                        onValueChange = {
+                            inputEmergencyContact = it
+                            saveSuccessMessage = null
+                        },
+                        label = { Text("Emergency Phone Number") },
+                        placeholder = { Text("+91 XXXXX XXXXX") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    if (savedEmergencyContact.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Active Masked Number:",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                            Text(
+                                text = SettingsStore.maskPhoneNumber(savedEmergencyContact),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
+                    if (saveSuccessMessage != null) {
+                        Text(
+                            text = saveSuccessMessage!!,
+                            color = Color(0xFF2E7D32),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                settingsStore.saveDriverName(inputDriverName)
+                                settingsStore.saveEmergencyContact(inputEmergencyContact)
+                                saveSuccessMessage = "Emergency contact saved locally."
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Save Emergency Contact", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            // Developer & Demo Flags Card (D9, LAD-7)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Text(
+                        text = "Demo & Testing Flags",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "DEMO_TIMERS",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = "Shortens escalation: L4 fires in 5s (vs 10s), L5 fires in 8s (vs 20s).",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = demoTimers,
+                            onCheckedChange = { isChecked ->
+                                scope.launch {
+                                    settingsStore.setDemoTimers(isChecked)
+                                }
+                            }
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "QUICK_CALIBRATION",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = "Fast demo calibration: open eyes 5s, closed eyes 2s.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = quickCalibration,
+                            onCheckedChange = { isChecked ->
+                                scope.launch {
+                                    settingsStore.setQuickCalibration(isChecked)
+                                }
+                            }
+                        )
                     }
                 }
             }

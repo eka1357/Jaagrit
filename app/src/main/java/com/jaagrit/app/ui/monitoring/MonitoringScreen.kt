@@ -23,6 +23,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -95,6 +96,15 @@ fun MonitoringScreen(
         }
     }
 
+    val requiredPermissions = remember {
+        arrayOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+    }
+
     var hasCameraPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -105,18 +115,19 @@ fun MonitoringScreen(
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        hasCameraPermission = isGranted
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        hasCameraPermission = results[Manifest.permission.CAMERA] == true ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
     }
 
     Scaffold(
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
         if (!hasCameraPermission) {
-            CameraPermissionRationale(
-                onRequestPermission = {
-                    permissionLauncher.launch(Manifest.permission.CAMERA)
+            PreDrivePermissionsRationale(
+                onRequestPermissions = {
+                    permissionLauncher.launch(requiredPermissions)
                 },
                 onBack = onEndDrive,
                 modifier = Modifier
@@ -400,6 +411,37 @@ private fun ActiveMonitoringContent(
                 }
             }
 
+            // Recalibration Suggestion (LAD-6: > 3 alerts dismissed in 10 min)
+            if (uiState.suggestRecalibration) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .padding(top = 10.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFFFFF3E0)
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFA000))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "⚠️ Recalibration Suggested",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = Color(0xFFE65100)
+                        )
+                        Text(
+                            text = "${uiState.falseAlertCount} alerts dismissed in 10 minutes. Calibrating again can adapt to changing light or posture.",
+                            fontSize = 12.sp,
+                            color = Color(0xFF5D4037)
+                        )
+                    }
+                }
+            }
+
             // Debug Telemetry Panel (shown on long-pressing title)
             AnimatedVisibility(visible = showDebugPanel) {
                 Card(
@@ -416,7 +458,7 @@ private fun ActiveMonitoringContent(
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
-                            text = "DEBUG TELEMETRY (LIVE)",
+                            text = "DEBUG TELEMETRY & FLAGS (LIVE)",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
@@ -433,6 +475,58 @@ private fun ActiveMonitoringContent(
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(text = "Inference: ${uiState.inferenceTimeMs} ms", fontSize = 12.sp, color = MaterialTheme.colorScheme.outline)
                             Text(text = "FPS: ${"%.1f".format(uiState.fps)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.outline)
+                        }
+
+                        // Flags & M6 State (D9, LAD-6, LAD-7)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "DEMO_TIMERS: ${if (uiState.demoTimers) "ON (5s/8s)" else "OFF (10s/20s)"}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (uiState.demoTimers) Color(0xFFE65100) else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Button(
+                                onClick = { pipeline.toggleDemoTimers() },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text(text = if (uiState.demoTimers) "Disable" else "Enable", fontSize = 11.sp)
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "QUICK_CALIB: ${if (uiState.quickCalibration) "ON (5s/2s)" else "OFF (10s/3s)"}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (uiState.quickCalibration) Color(0xFF1976D2) else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Button(
+                                onClick = { pipeline.toggleQuickCalibration() },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text(text = if (uiState.quickCalibration) "Disable" else "Enable", fontSize = 11.sp)
+                            }
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(text = "False Alerts (10m): ${uiState.falseAlertCount}", fontSize = 12.sp)
+                            Text(text = "L5 Countdown: ${uiState.l5CountdownSeconds?.let { "${it}s" } ?: "N/A"}", fontSize = 12.sp)
+                        }
+                        if (uiState.smsNotificationStatus != null) {
+                            Text(
+                                text = "SMS: ${uiState.smsNotificationStatus}",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
@@ -533,6 +627,64 @@ private fun RedAlertFullScreen(
                 )
             }
 
+            // Visible L5 Countdown or In-App SMS Status (LAD-4, D6)
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(vertical = 12.dp)
+            ) {
+                if (uiState.l5CountdownSeconds != null) {
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = Color.Black.copy(alpha = 0.65f),
+                        border = androidx.compose.foundation.BorderStroke(2.dp, Color(0xFFFFD54F)),
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
+                        ) {
+                            Text(
+                                text = "EMERGENCY SMS IN",
+                                color = Color(0xFFFFD54F),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 2.sp
+                            )
+                            Text(
+                                text = "${uiState.l5CountdownSeconds}s",
+                                color = Color(0xFFFFD54F),
+                                fontSize = 42.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                            Text(
+                                text = "Tap I'M AWAKE to cancel SMS",
+                                color = Color.White.copy(alpha = 0.85f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+
+                if (uiState.smsNotificationStatus != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.Black.copy(alpha = 0.8f),
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    ) {
+                        Text(
+                            text = uiState.smsNotificationStatus,
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+
             // Primary Emergency Action: Giant "I'M AWAKE" Button (UI-2)
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -562,7 +714,7 @@ private fun RedAlertFullScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
                 Text(
-                    text = "Tap button to stop alarm",
+                    text = "Tap button to stop alarm and cancel SMS",
                     color = Color.White.copy(alpha = 0.9f),
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold
@@ -573,8 +725,8 @@ private fun RedAlertFullScreen(
 }
 
 @Composable
-private fun CameraPermissionRationale(
-    onRequestPermission: () -> Unit,
+private fun PreDrivePermissionsRationale(
+    onRequestPermissions: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -585,17 +737,17 @@ private fun CameraPermissionRationale(
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(top = 40.dp)
+            modifier = Modifier.padding(top = 32.dp)
         ) {
             Text(
-                text = "Camera Permission Needed",
+                text = "Pre-Drive Permissions Needed",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = "Jaagrit watches driver alertness through the front dashboard camera to warn you before microsleep happens.",
+                text = "Jaagrit requires camera access to monitor driver alertness, and SMS + GPS to notify emergency contacts if you become unresponsive.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -614,12 +766,15 @@ private fun CameraPermissionRationale(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "Privacy Guarantee",
+                    text = "Pre-Drive Checklist & Privacy",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "• No internet access (100% offline)\n• Video is processed in memory and discarded immediately\n• No photos or videos are ever saved to disk",
+                    text = "• Camera frames processed in-memory only (never stored)\n" +
+                            "• Zero network/internet usage (100% offline)\n" +
+                            "• Emergency SMS uses cellular radio directly\n" +
+                            "• ⚠️ Pre-drive check: SMS needs mobile signal — airplane mode blocks it (D6)",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -631,13 +786,13 @@ private fun CameraPermissionRationale(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Button(
-                onClick = onRequestPermission,
+                onClick = onRequestPermissions,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(54.dp),
                 shape = RoundedCornerShape(14.dp)
             ) {
-                Text(text = "Grant Camera Permission", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(text = "Grant Pre-Drive Permissions", fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
             OutlinedButton(
                 onClick = onBack,
