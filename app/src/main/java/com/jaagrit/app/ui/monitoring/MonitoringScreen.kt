@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -70,12 +71,16 @@ import com.jaagrit.app.R
 import com.jaagrit.app.camera.MonitoringPipeline
 import com.jaagrit.app.engine.DriverState
 import com.jaagrit.app.sms.SmsNotifier
+import com.jaagrit.app.speech.DriverIntent
+import com.jaagrit.app.speech.RecognizerInput
+import com.jaagrit.app.speech.SpeechInput
 import com.jaagrit.app.ui.components.JaagritBrandHeader
 import java.util.Locale
 
 @Composable
 fun MonitoringScreen(
     onEndDrive: () -> Unit,
+    onNavigateToCalibration: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -102,6 +107,7 @@ fun MonitoringScreen(
     val requiredPermissions = remember {
         arrayOf(
             Manifest.permission.CAMERA,
+            Manifest.permission.RECORD_AUDIO,
             Manifest.permission.SEND_SMS,
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION
@@ -113,6 +119,15 @@ fun MonitoringScreen(
             ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    var audioGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECORD_AUDIO
             ) == PackageManager.PERMISSION_GRANTED
         )
     }
@@ -146,6 +161,8 @@ fun MonitoringScreen(
     ) { results ->
         cameraGranted = results[Manifest.permission.CAMERA] == true ||
                 ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        audioGranted = results[Manifest.permission.RECORD_AUDIO] == true ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         smsGranted = results[Manifest.permission.SEND_SMS] == true ||
                 ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
         locationGranted = results[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
@@ -153,12 +170,12 @@ fun MonitoringScreen(
                 ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
                 ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
-        if (cameraGranted && smsGranted && locationGranted) {
+        if (cameraGranted && audioGranted && smsGranted && locationGranted) {
             preDriveDismissed = true
         }
     }
 
-    val showPreDrive = (!cameraGranted || !smsGranted || !locationGranted) && !preDriveDismissed
+    val showPreDrive = (!cameraGranted || !audioGranted || !smsGranted || !locationGranted) && !preDriveDismissed
 
     Scaffold(
         modifier = modifier.fillMaxSize()
@@ -166,6 +183,7 @@ fun MonitoringScreen(
         if (showPreDrive) {
             PreDrivePermissionsRationale(
                 cameraGranted = cameraGranted,
+                audioGranted = audioGranted,
                 smsGranted = smsGranted,
                 locationGranted = locationGranted,
                 onRequestPermissions = {
@@ -184,6 +202,7 @@ fun MonitoringScreen(
         } else {
             ActiveMonitoringContent(
                 onEndDrive = onEndDrive,
+                onNavigateToCalibration = onNavigateToCalibration,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
@@ -195,6 +214,7 @@ fun MonitoringScreen(
 @Composable
 private fun ActiveMonitoringContent(
     onEndDrive: () -> Unit,
+    onNavigateToCalibration: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -203,6 +223,14 @@ private fun ActiveMonitoringContent(
     // Pipeline decoupled from UI (AGENTS.md Rule 10, D15)
     val pipeline = remember { MonitoringPipeline(context) }
     val uiState by pipeline.uiState.collectAsState()
+
+    // Speech input lifecycle bound to ActiveMonitoringContent
+    val speechInput = remember { RecognizerInput(context) }
+    DisposableEffect(speechInput) {
+        onDispose {
+            speechInput.destroy()
+        }
+    }
 
     var showDebugPanel by remember { mutableStateOf(false) }
 
@@ -703,6 +731,18 @@ private fun ActiveMonitoringContent(
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(text = "Voice: ${uiState.lastRecognizedText ?: "None"}", fontSize = 12.sp)
+                                Text(text = "Intent: ${uiState.lastMatchedIntent?.name ?: "None"}", fontSize = 12.sp)
+                            }
+                            if (uiState.recognitionLatencyMs != null) {
+                                Text(
+                                    text = "Voice Latency: ${uiState.recognitionLatencyMs}ms",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }
@@ -711,7 +751,7 @@ private fun ActiveMonitoringContent(
 
         // 3. Bottom Action Section
         if (isAlert) {
-            // Alert mode: "I'M AWAKE" button at bottom, End Drive is HIDDEN!
+            // Alert mode: "I'M AWAKE" button at bottom, End Drive and Voice/Button controls are HIDDEN!
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -746,23 +786,162 @@ private fun ActiveMonitoringContent(
                 )
             }
         } else {
-            // Normal mode: "End Drive" button
-            Button(
-                onClick = onEndDrive,
+            // Normal mode: Voice answer banner + Ask Jaagrit button + 4 fallback buttons + End Drive button
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error
-                )
+                    .padding(bottom = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    text = stringResource(R.string.btn_end_drive),
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onError
-                )
+                // 4-second answer text banner (M8)
+                AnimatedVisibility(visible = uiState.voiceAnswerText != null) {
+                    uiState.voiceAnswerText?.let { answerText ->
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = answerText,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Push-to-Talk "Ask Jaagrit" Button (M8, VOI-3)
+                Button(
+                    onClick = {
+                        if (uiState.isListening) {
+                            pipeline.cancelPushToTalk(speechInput)
+                        } else {
+                            pipeline.startPushToTalk(speechInput, onNavigateToCalibration)
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (uiState.isListening) Color(0xFFC62828) else MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = if (uiState.isListening) Color.White else MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_mic),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = stringResource(if (uiState.isListening) R.string.listening_hint else R.string.btn_ask_jaagrit),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                // Fallback Row of 4 Intent Buttons (each 48dp+ per M8 requirement)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { pipeline.executeIntent(DriverIntent.DRIVE_TIME) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.btn_cmd_drive_time),
+                            fontSize = 11.sp,
+                            maxLines = 2,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 13.sp
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = { pipeline.executeIntent(DriverIntent.ALERTNESS) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.btn_cmd_alertness),
+                            fontSize = 11.sp,
+                            maxLines = 2,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 13.sp
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = { pipeline.executeIntent(DriverIntent.ALERT_COUNT) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.btn_cmd_alert_count),
+                            fontSize = 11.sp,
+                            maxLines = 2,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 13.sp
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = { pipeline.executeIntent(DriverIntent.LAST_ALERT) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.btn_cmd_last_alert),
+                            fontSize = 11.sp,
+                            maxLines = 2,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 13.sp
+                        )
+                    }
+                }
+
+                // End Drive button
+                Button(
+                    onClick = onEndDrive,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text(
+                        text = stringResource(R.string.btn_end_drive),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onError
+                    )
+                }
             }
         }
     }
@@ -771,6 +950,7 @@ private fun ActiveMonitoringContent(
 @Composable
 private fun PreDrivePermissionsRationale(
     cameraGranted: Boolean,
+    audioGranted: Boolean,
     smsGranted: Boolean,
     locationGranted: Boolean,
     onRequestPermissions: () -> Unit,
@@ -923,6 +1103,43 @@ private fun PreDrivePermissionsRationale(
                     }
                     Text(
                         text = stringResource(R.string.perm_location_desc),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                // Line 4: Microphone (M8)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_mic),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.perm_audio_title),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                        }
+                        Text(
+                            text = stringResource(if (audioGranted) R.string.perm_status_granted else R.string.perm_status_not_granted),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (audioGranted) Color(0xFF2E7D32) else Color(0xFFE65100)
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.perm_audio_desc),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

@@ -159,4 +159,24 @@
     <string name="settings_quick_calib_desc">Fast demo calibration: open eyes 5s, closed eyes 2s.</string>
     <string name="settings_privacy_title">Privacy Guarantee</string>
     <string name="settings_privacy_bullets">• 100% Offline: The app contains no INTERNET permission.\n• Zero Media Retention: Camera frames and mic audio are never saved to storage.\n• Numerical Telemetry Only: Only mathematical metrics (EAR, pitch, timestamps) are computed in memory.\n• Local Persistence: Driver baseline is saved securely in local Android DataStore.</string>
+
+    <!-- Voice Commands & Fallback Buttons (M8) -->
+    <string name="btn_cmd_drive_time">Drive time</string>
+    <string name="btn_cmd_alertness">Alertness</string>
+    <string name="btn_cmd_alert_count">Alerts today</string>
+    <string name="btn_cmd_last_alert">Last alert</string>
+    <string name="btn_ask_jaagrit">Ask Jaagrit</string>
+    <string name="listening_hint">Listening…</string>
+    <string name="voice_ans_drive_time">You have been driving for %1$d hours and %2$d minutes.</string>
+    <string name="voice_ans_alertness">Alertness is %1$d percent. %2$s.</string>
+    <string name="voice_ans_alert_count">There have been %1$d alerts today.</string>
+    <string name="voice_ans_alert_count_zero">No alerts yet today.</string>
+    <string name="voice_ans_last_alert">Last alert was %1$d minutes ago.</string>
+    <string name="voice_ans_last_alert_now">Last alert was just now.</string>
+    <string name="voice_ans_recalibrate">Okay, look at the camera.</string>
+    <string name="voice_ans_say_again">Say again?</string>
+    <string name="checklist_voice">Voice Commands</string>
+    <string name="status_offline_pack_missing">offline pack missing</string>
+    <string name="perm_audio_title">Microphone</string>
+    <string name="perm_audio_desc">Allows hands-free voice questions like asking driving time or alertness.</string>
 </resources>
