@@ -1,0 +1,93 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Outer Guardian Badge (Dark Forest Container) -->
+    <path
+        android:fillColor="#123425"
+        android:pathData="M54,14 C76.09,14 94,31.91 94,54 C94,76.09 76.09,94 54,94 C31.91,94 14,76.09 14,54 C14,31.91 31.91,14 54,14 Z" />
+
+    <!-- Badge Inner Border -->
+    <path
+        android:strokeColor="#25593E"
+        android:strokeWidth="1.5"
+        android:fillColor="#00000000"
+        android:pathData="M54,15 C75.5,15 93,32.5 93,54 C93,75.5 75.5,93 54,93 C32.5,93 15,75.5 15,54 C15,32.5 32.5,15 54,15 Z" />
+
+    <!-- Active Vigilance Radar Arc (Top sensor sweep) -->
+    <path
+        android:strokeColor="#B9EE45"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:strokeAlpha="0.9"
+        android:pathData="M37,32 C43,26 65,26 71,32" />
+
+    <!-- Highway Perspective Surface (Road leading to horizon) -->
+    <path
+        android:fillColor="#1C4734"
+        android:pathData="M44,70 L52,53 L56,53 L64,70 Z" />
+
+    <!-- Highway Lane Boundaries -->
+    <path
+        android:strokeColor="#8DA399"
+        android:strokeWidth="1.2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:strokeAlpha="0.6"
+        android:pathData="M44,70 L52,53 M64,70 L56,53" />
+
+    <!-- Highway Center Guide Line (Lime Alert Dash) -->
+    <path
+        android:strokeColor="#B9EE45"
+        android:strokeWidth="2.0"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M54,68 L54,58" />
+
+    <!-- Horizon Line -->
+    <path
+        android:strokeColor="#2A5C43"
+        android:strokeWidth="1.2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M36,53 L72,53" />
+
+    <!-- Eye Contour - Upper Eyelid (Streamlined Automotive Arc) -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M26,53 C36,35 72,35 82,53" />
+
+    <!-- Eye Contour - Lower Eyelid -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M26,53 C36,71 72,71 82,53" />
+
+    <!-- Outer Iris Ring (Deep Focus) -->
+    <path
+        android:fillColor="#102B1E"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.8"
+        android:pathData="M54,39 A11,11 0 1,1 53.99,39 Z" />
+
+    <!-- Vibrant Alert Core Pupil (Awake / Vigilant) -->
+    <path
+        android:fillColor="#B9EE45"
+        android:pathData="M54,44.5 A5.5,5.5 0 1,1 53.99,44.5 Z" />
+
+    <!-- Specular Catchlight (Glassy Vitality) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M56.5,46 A1.5,1.5 0 1,1 56.49,46 Z" />
+
+</vector>

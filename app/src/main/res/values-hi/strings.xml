@@ -173,12 +173,17 @@
     <string name="settings_contact_desc">यदि आप गाड़ी चलाते समय जवाब नहीं देते हैं, तो जागृत आपके जीपीएस लोकेशन के साथ इस नंबर पर आपातकालीन एसएमएस भेजता है।</string>
     <string name="settings_driver_name_label">ड्राइवर का नाम</string>
     <string name="settings_phone_label">आपातकालीन फ़ोन नंबर</string>
+    <string name="settings_phone_label_n">आपातकालीन संपर्क %1$d</string>
+    <string name="settings_phone_label_optional">आपातकालीन संपर्क %1$d (वैकल्पिक)</string>
+    <string name="settings_phone_error_invalid">कृपया एक मान्य फ़ोन नंबर दर्ज करें (7-15 अंक)</string>
+    <string name="settings_phone_error_duplicate">यह नंबर पहले से जोड़ा गया है</string>
     <string name="settings_masked_label">सक्रिय नंबर:</string>
     <string name="settings_btn_save_contact">आपातकालीन संपर्क सेव करें</string>
     <string name="settings_contact_saved">आपातकालीन संपर्क सफलतापूर्वक सेव हो गया।</string>
     <string name="settings_demo_flags">डेमो और परीक्षण फ़्लैग</string>
     <string name="settings_demo_timers_desc">त्वरित अलर्ट: 5 सेकंड में परिवार की आवाज़, 8 सेकंड में एसएमएस।</string>
     <string name="settings_quick_calib_desc">त्वरित कैलिब्रेशन: खुली आँखें 5 सेकंड, बंद आँखें 2 सेकंड।</string>
+    <string name="settings_companion_desc">L1/L2 बातचीत, गणित के सवाल और संज्ञानात्मक प्रतिक्रिया ट्रैकिंग।</string>
     <string name="settings_privacy_title">गोपनीयता की गारंटी</string>
     <string name="settings_privacy_bullets">• 100% ऑफ़लाइन: ऐप में इंटरनेट की कोई अनुमति नहीं है।\n• कोई मीडिया स्टोरेज नहीं: कैमरा और आवाज़ कभी भी स्टोरेज में सेव नहीं होते।\n• केवल गणितीय आँकड़े: केवल सांख्यिकीय माप (EAR, कोण, समय) मेमोरी में प्रोसेस होते हैं।\n• सुरक्षित लोकल स्टोरेज: सभी डेटा केवल आपके फ़ोन के डेटास्टोर में सुरक्षित रहता है।</string>
 

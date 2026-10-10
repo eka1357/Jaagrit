@@ -86,6 +86,13 @@ class CompanionLoop(
         lang: Lang = Lang.HI,
         now: Long = clock.nowMs()
     ): CompanionOutcome {
+        // 0. If companion is disabled in Config, never run lines/questions or escalate
+        if (!config.companionEnabled) {
+            clearPrompt()
+            previousLevel = activeLevel
+            return CompanionOutcome.Actions(emptyList())
+        }
+
         val actions = mutableListOf<Action>()
 
         // 1. If critical alert is active (L3, L4, L5) or L0 normal: clear active prompt if any
@@ -175,6 +182,9 @@ class CompanionLoop(
      * Handle incoming voice events or manual on-screen answer button presses.
      */
     fun onVoice(e: VoiceEvent, lang: Lang = Lang.HI, now: Long = clock.nowMs()): List<Action> {
+        if (!config.companionEnabled) {
+            return emptyList()
+        }
         val actions = mutableListOf<Action>()
 
         when (e) {
@@ -205,8 +215,7 @@ class CompanionLoop(
                         slowAnswerReportedUntilMs = now + config.companionSlowAnswerWindowMs
                     }
 
-                    val parsed = NumberAnswerParser.parse(e.text)
-                    val isCorrect = parsed?.toString() == question.answer
+                    val isCorrect = isAnswerValid(e.text, question)
                     lastAnswerCorrect = isCorrect
 
                     val ack = if (isSlow) Phrases.ACK_SLOW.pick(lang) else Phrases.ACK_GOOD.pick(lang)
@@ -214,7 +223,7 @@ class CompanionLoop(
                     actions.add(
                         Action.Log(
                             AlertEventType.ACTION_TRIGGERED,
-                            "Math response: '${e.text}' (latency=${latency}ms, slow=$isSlow, correct=$isCorrect)"
+                            "Companion response: '${e.text}' (latency=${latency}ms, slow=$isSlow, acknowledged=$isCorrect)"
                         )
                     )
                 } else {
@@ -240,6 +249,7 @@ class CompanionLoop(
      * True if a confirmed slow cognitive response penalty/reason is active.
      */
     fun isSlowCognitiveResponseActive(now: Long = clock.nowMs()): Boolean {
+        if (!config.companionEnabled) return false
         return slowAnswerReportedUntilMs?.let { now < it } == true
     }
 
@@ -247,6 +257,18 @@ class CompanionLoop(
      * Current companion status for UI and EngineOutput.
      */
     fun status(now: Long = clock.nowMs()): CompanionStatus {
+        if (!config.companionEnabled) {
+            return CompanionStatus(
+                kind = null,
+                text = null,
+                choices = emptyList(),
+                silenced = false,
+                backedOff = false,
+                lastLatencyMs = null,
+                lastAnswerSlow = false,
+                lastAnswerCorrect = null
+            )
+        }
         return CompanionStatus(
             kind = currentPromptKind,
             text = currentPromptText,
@@ -278,5 +300,26 @@ class CompanionLoop(
         currentQuestion = null
         questionAskedAtMs = null
         questionDeadlineMs = null
+    }
+
+    private fun isAnswerValid(spokenText: String, question: CompanionQuestion): Boolean {
+        val trimmed = spokenText.trim()
+        if (trimmed.isEmpty()) return false
+        // 1. Direct match with expected answer or any presented choice
+        if (trimmed.equals(question.answer, ignoreCase = true)) return true
+        if (question.choices.any { it.equals(trimmed, ignoreCase = true) }) return true
+        // 2. Natural spoken affirmations/acknowledgements (Hindi, Hinglish, English)
+        val normalized = trimmed.lowercase()
+        val affirmativeTokens = listOf(
+            "alert", "अलर्ट", "अलर्ट हूँ", "alert hoon", "im alert", "i'm alert",
+            "suna", "सुना", "sun liya", "got it", "haan", "हाँ", "ha", "yes", "yeah", "yep",
+            "ok", "okay", "theek", "theek hai", "theek hoon", "fine", "i'm fine", "awake", "i'm awake",
+            "jaagrit", "shukriya", "thanks"
+        )
+        if (affirmativeTokens.any { normalized.contains(it) }) return true
+        // 3. Fallback for numeric answers (backwards-compat / math answers)
+        val parsedNum = NumberAnswerParser.parse(trimmed)
+        if (parsedNum != null && parsedNum.toString() == question.answer) return true
+        return false
     }
 }

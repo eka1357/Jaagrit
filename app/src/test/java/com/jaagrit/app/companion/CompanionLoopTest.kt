@@ -8,8 +8,10 @@ import com.jaagrit.app.engine.DriverState
 import com.jaagrit.app.engine.FaceFrame
 import com.jaagrit.app.engine.FakeClock
 import com.jaagrit.app.engine.FatigueEngine
+import com.jaagrit.app.engine.Lang
 import com.jaagrit.app.engine.Level
 import com.jaagrit.app.engine.VoiceEvent
+import com.jaagrit.app.speech.Phrases
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -41,7 +43,7 @@ class CompanionLoopTest {
     fun setup() {
         clock = FakeClock(1_000_000L)
         loop = CompanionLoop(
-            config = Config.DEFAULT,
+            config = Config.DEFAULT.copy(companionEnabled = true),
             clock = clock,
             brain = PhraseBankCompanion(Config.DEFAULT),
             baseline = baseline
@@ -203,9 +205,51 @@ class CompanionLoopTest {
     }
 
     @Test
+    fun awakeningFact_hindiMode_deliversHindiFactAndAcceptsHindiAffirmation() {
+        val out = loop.evaluate(activeLevel = Level.L2, isEyesClosed = false, isAlertActive = false, lang = Lang.HI)
+        val q = loop.currentQuestion!!
+        assertTrue("Prompt should be from verified Hindi facts", Phrases.AWAKENING_FACTS.any { it.prompt.hi == q.prompt })
+        assertEquals("अलर्ट हूँ", q.answer)
+        assertTrue(q.choices.contains("सुना"))
+
+        // Driver says "theek hoon"
+        val actions = loop.onVoice(VoiceEvent.Answer(text = "theek hoon", latencyMs = 1200L), lang = Lang.HI)
+        assertEquals(true, loop.lastAnswerCorrect)
+        assertFalse(loop.lastAnswerSlow)
+        assertNull(loop.currentPromptKind)
+    }
+
+    @Test
+    fun awakeningFact_englishMode_deliversEnglishFactAndAcceptsEnglishAffirmation() {
+        val out = loop.evaluate(activeLevel = Level.L2, isEyesClosed = false, isAlertActive = false, lang = Lang.EN)
+        val q = loop.currentQuestion!!
+        assertTrue("Prompt should be from verified English facts", Phrases.AWAKENING_FACTS.any { it.prompt.en == q.prompt })
+        assertEquals("I'm alert", q.answer)
+        assertTrue(q.choices.contains("Got it"))
+
+        // Driver says "Got it"
+        val actions = loop.onVoice(VoiceEvent.Answer(text = "Got it", latencyMs = 1100L), lang = Lang.EN)
+        assertEquals(true, loop.lastAnswerCorrect)
+        assertFalse(loop.lastAnswerSlow)
+        assertNull(loop.currentPromptKind)
+    }
+
+    @Test
+    fun awakeningFact_repetitionPreventionAcrossInteractions() {
+        val brain = PhraseBankCompanion(Config.DEFAULT)
+        val ctx = CompanionContext(level = Level.L2, lang = Lang.EN)
+        val q1 = brain.question(ctx)
+        val q2 = brain.question(ctx)
+        val q3 = brain.question(ctx)
+        // Ensure consecutive facts are not identical
+        assertTrue("Consecutive facts must not repeat immediately", q1.prompt != q2.prompt)
+        assertTrue("Consecutive facts must not repeat immediately", q2.prompt != q3.prompt)
+    }
+
+    @Test
     fun endToEnd_engineIntegratesCompanion_dismissThenEyeCloseStillFiresL3() {
         val engine = FatigueEngine(
-            config = Config.DEFAULT,
+            config = Config.DEFAULT.copy(companionEnabled = true),
             clock = clock,
             baseline = baseline
         )
@@ -239,5 +283,155 @@ class CompanionLoopTest {
             }
         }
         assertTrue("Dismiss silence must NEVER compromise the L3 safety path", l3Fired)
+    }
+
+    @Test
+    fun whenCompanionDisabled_evaluateAtL1_neverEmitsOpenersOrActions() {
+        val disabledLoop = CompanionLoop(
+            config = Config.DEFAULT.copy(companionEnabled = false),
+            clock = clock,
+            brain = PhraseBankCompanion(Config.DEFAULT),
+            baseline = baseline
+        )
+
+        val outL1 = disabledLoop.evaluate(
+            activeLevel = Level.L1,
+            isEyesClosed = false,
+            isAlertActive = false,
+            now = clock.nowMs()
+        )
+        assertTrue(outL1 is CompanionLoop.CompanionOutcome.Actions)
+        assertTrue("No actions should be returned when companion is disabled", (outL1 as CompanionLoop.CompanionOutcome.Actions).actions.isEmpty())
+        assertNull("No prompt should be set when disabled", disabledLoop.currentPromptKind)
+        assertNull(disabledLoop.currentPromptText)
+    }
+
+    @Test
+    fun whenCompanionDisabled_evaluateAtL2_neverEmitsMathQuestions() {
+        val disabledLoop = CompanionLoop(
+            config = Config.DEFAULT.copy(companionEnabled = false),
+            clock = clock,
+            brain = PhraseBankCompanion(Config.DEFAULT),
+            baseline = baseline
+        )
+
+        val outL2 = disabledLoop.evaluate(
+            activeLevel = Level.L2,
+            isEyesClosed = false,
+            isAlertActive = false,
+            now = clock.nowMs()
+        )
+        assertTrue(outL2 is CompanionLoop.CompanionOutcome.Actions)
+        assertTrue("No actions should be returned when companion is disabled", (outL2 as CompanionLoop.CompanionOutcome.Actions).actions.isEmpty())
+        assertNull(disabledLoop.currentQuestion)
+        assertNull(disabledLoop.currentPromptKind)
+    }
+
+    @Test
+    fun whenCompanionDisabled_timeoutNeverEscalatesToL3() {
+        val disabledLoop = CompanionLoop(
+            config = Config.DEFAULT.copy(companionEnabled = false),
+            clock = clock,
+            brain = PhraseBankCompanion(Config.DEFAULT),
+            baseline = baseline
+        )
+
+        // Evaluate at L2 repeatedly over a long duration (10 seconds)
+        for (i in 1..20) {
+            clock.advance(500L)
+            val out = disabledLoop.evaluate(
+                activeLevel = Level.L2,
+                isEyesClosed = false,
+                isAlertActive = false,
+                now = clock.nowMs()
+            )
+            assertTrue("Must never escalate to L3 when companion is disabled", out is CompanionLoop.CompanionOutcome.Actions)
+            assertTrue((out as CompanionLoop.CompanionOutcome.Actions).actions.isEmpty())
+        }
+    }
+
+    @Test
+    fun whenCompanionDisabled_onVoiceNeverSpeaks() {
+        val disabledLoop = CompanionLoop(
+            config = Config.DEFAULT.copy(companionEnabled = false),
+            clock = clock,
+            brain = PhraseBankCompanion(Config.DEFAULT),
+            baseline = baseline
+        )
+
+        val actionsDismiss = disabledLoop.onVoice(VoiceEvent.Dismiss)
+        assertTrue("No actions on dismiss when disabled", actionsDismiss.isEmpty())
+
+        val actionsAnswer = disabledLoop.onVoice(VoiceEvent.Answer(text = "4", latencyMs = 0L))
+        assertTrue("No actions on answer when disabled", actionsAnswer.isEmpty())
+
+        assertFalse(disabledLoop.isSlowCognitiveResponseActive())
+    }
+
+    @Test
+    fun whenCompanionDisabled_statusAlwaysIdleAndNull() {
+        val disabledLoop = CompanionLoop(
+            config = Config.DEFAULT.copy(companionEnabled = false),
+            clock = clock,
+            baseline = baseline
+        )
+        val status = disabledLoop.status()
+        assertNull(status.kind)
+        assertNull(status.text)
+        assertTrue(status.choices.isEmpty())
+        assertFalse(status.silenced)
+        assertFalse(status.backedOff)
+        assertNull(status.lastLatencyMs)
+        assertFalse(status.lastAnswerSlow)
+        assertNull(status.lastAnswerCorrect)
+    }
+
+    @Test
+    fun whenCompanionDisabled_engineEyeClosureStillFiresL3AndL4L5WithoutInterference() {
+        val engine = FatigueEngine(
+            config = Config.DEFAULT.copy(companionEnabled = false),
+            clock = clock,
+            baseline = baseline
+        )
+        engine.resetDrive(clock.nowMs())
+
+        // Ensure engine companion is null in output when disabled
+        val normalFrame = engine.onFrame(FaceFrame(tsMs = clock.nowMs(), faceFound = true, earL = 0.30f, earR = 0.30f, mar = 0.02f, pitchDeg = 0f, yawDeg = 0f, rollDeg = 0f))
+        assertNull("Companion status in output must be null when disabled", normalFrame.companion)
+
+        // Close eyes for 2.5s -> L3 alarm fires!
+        var l3Fired = false
+        val stepMs = 50L
+        for (i in 1..60) {
+            clock.advance(stepMs)
+            val f = FaceFrame(
+                tsMs = clock.nowMs(),
+                faceFound = true,
+                earL = 0.05f,
+                earR = 0.05f,
+                mar = 0.02f,
+                pitchDeg = 0f,
+                yawDeg = 0f,
+                rollDeg = 0f
+            )
+            val out = engine.onFrame(f)
+            if (out.actions.any { it is Action.ShowRedFlash }) {
+                l3Fired = true
+                assertEquals(DriverState.CRITICAL, out.state)
+                assertEquals(Level.L3, out.level)
+                break
+            }
+        }
+        assertTrue("L3 eye closure alarm must fire when companion is disabled", l3Fired)
+
+        // Advance 10s -> L4 fires
+        clock.advance(10_000L)
+        val l4Out = engine.onTick()
+        assertTrue("L4 family clip must fire when companion is disabled", l4Out.actions.any { it is Action.PlayFamilyClip })
+
+        // Advance 20s -> L5 SMS fires
+        clock.advance(20_000L)
+        val l5Out = engine.onTick()
+        assertTrue("L5 SMS must fire when companion is disabled", l5Out.actions.any { it is Action.SendSms })
     }
 }

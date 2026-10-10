@@ -34,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -50,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jaagrit.app.R
 import com.jaagrit.app.data.BaselineStore
+import com.jaagrit.app.data.ContactInputError
 import com.jaagrit.app.data.SettingsStore
 import com.jaagrit.app.ui.components.LanguageSwitch
 import kotlinx.coroutines.launch
@@ -73,17 +75,22 @@ fun SettingsScreen(
 
     val baseline by baselineStore.baselineFlow.collectAsState(initial = null)
     val savedDriverName by settingsStore.driverNameFlow.collectAsState(initial = SettingsStore.DEFAULT_DRIVER_NAME)
-    val savedEmergencyContact by settingsStore.emergencyContactFlow.collectAsState(initial = "")
+    val savedEmergencyContacts by settingsStore.emergencyContactsFlow.collectAsState(initial = emptyList())
     val demoTimers by settingsStore.demoTimersFlow.collectAsState(initial = false)
     val quickCalibration by settingsStore.quickCalibrationFlow.collectAsState(initial = false)
+    val companionEnabled by settingsStore.companionEnabledFlow.collectAsState(initial = false)
 
     var inputDriverName by remember { mutableStateOf("") }
-    var inputEmergencyContact by remember { mutableStateOf("") }
+    val inputContacts = remember { mutableStateListOf(*Array(SettingsStore.MAX_EMERGENCY_CONTACTS) { "" }) }
+    val contactErrors = remember { mutableStateListOf<ContactInputError?>(*arrayOfNulls(SettingsStore.MAX_EMERGENCY_CONTACTS)) }
     var saveSuccessMessage by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(savedDriverName, savedEmergencyContact) {
+    LaunchedEffect(savedDriverName, savedEmergencyContacts) {
         inputDriverName = savedDriverName
-        inputEmergencyContact = savedEmergencyContact
+        for (i in 0 until SettingsStore.MAX_EMERGENCY_CONTACTS) {
+            inputContacts[i] = savedEmergencyContacts.getOrNull(i) ?: ""
+            contactErrors[i] = null
+        }
     }
 
     Scaffold(
@@ -305,21 +312,41 @@ fun SettingsScreen(
                         shape = RoundedCornerShape(12.dp)
                     )
 
-                    OutlinedTextField(
-                        value = inputEmergencyContact,
-                        onValueChange = {
-                            inputEmergencyContact = it
-                            saveSuccessMessage = null
-                        },
-                        label = { Text(stringResource(R.string.settings_phone_label)) },
-                        placeholder = { Text("+91 XXXXX XXXXX") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
-                    )
+                    for (i in 0 until SettingsStore.MAX_EMERGENCY_CONTACTS) {
+                        val error = contactErrors[i]
+                        OutlinedTextField(
+                            value = inputContacts[i],
+                            onValueChange = {
+                                inputContacts[i] = it
+                                contactErrors[i] = null
+                                saveSuccessMessage = null
+                            },
+                            label = {
+                                Text(
+                                    if (i == 0) stringResource(R.string.settings_phone_label_n, i + 1)
+                                    else stringResource(R.string.settings_phone_label_optional, i + 1)
+                                )
+                            },
+                            placeholder = { Text("+91 XXXXX XXXXX") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                            isError = error != null,
+                            supportingText = error?.let {
+                                {
+                                    Text(
+                                        stringResource(
+                                            if (it == ContactInputError.INVALID) R.string.settings_phone_error_invalid
+                                            else R.string.settings_phone_error_duplicate
+                                        )
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
 
-                    if (savedEmergencyContact.isNotEmpty()) {
+                    if (savedEmergencyContacts.isNotEmpty()) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -331,7 +358,7 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.outline
                             )
                             Text(
-                                text = SettingsStore.maskPhoneNumber(savedEmergencyContact),
+                                text = savedEmergencyContacts.joinToString(", ") { SettingsStore.maskPhoneNumber(it) },
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -351,10 +378,16 @@ fun SettingsScreen(
                     val savedSuccessStr = stringResource(R.string.settings_contact_saved)
                     Button(
                         onClick = {
-                            scope.launch {
-                                settingsStore.saveDriverName(inputDriverName)
-                                settingsStore.saveEmergencyContact(inputEmergencyContact)
-                                saveSuccessMessage = savedSuccessStr
+                            val errors = SettingsStore.validateContacts(inputContacts.toList())
+                            errors.forEachIndexed { i, e -> contactErrors[i] = e }
+                            if (errors.all { it == null }) {
+                                scope.launch {
+                                    settingsStore.saveDriverName(inputDriverName)
+                                    settingsStore.saveEmergencyContacts(inputContacts.toList())
+                                    saveSuccessMessage = savedSuccessStr
+                                }
+                            } else {
+                                saveSuccessMessage = null
                             }
                         },
                         modifier = Modifier
@@ -437,6 +470,33 @@ fun SettingsScreen(
                             onCheckedChange = { isChecked ->
                                 scope.launch {
                                     settingsStore.setQuickCalibration(isChecked)
+                                }
+                            }
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "COMPANION",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = stringResource(R.string.settings_companion_desc),
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = companionEnabled,
+                            onCheckedChange = { isChecked ->
+                                scope.launch {
+                                    settingsStore.setCompanionEnabled(isChecked)
                                 }
                             }
                         )

@@ -118,6 +118,13 @@ class ConfigTest {
     }
 
     @Test
+    fun verifyCompanionFlagDefaultsToOff() {
+        assertEquals(false, Config.DEFAULT.companionEnabled)
+        assertEquals(false, Config().companionEnabled)
+        assertEquals(true, Config(companionEnabled = true).companionEnabled)
+    }
+
+    @Test
     fun verifyLandmarkIndices() {
         assertEquals(6, Config.LANDMARKS_EYE_RIGHT.size)
         assertEquals(6, Config.LANDMARKS_EYE_LEFT.size)

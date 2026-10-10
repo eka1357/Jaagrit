@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -101,7 +102,7 @@ fun HomeScreen(
     val baseline by baselineStore.baselineFlow.collectAsState(initial = null)
     val settingsStore = remember { SettingsStore(context) }
     val smsNotifier = remember { SmsNotifier(context, settingsStore) }
-    val emergencyContact by settingsStore.emergencyContactFlow.collectAsState(initial = "")
+    val emergencyContacts by settingsStore.emergencyContactsFlow.collectAsState(initial = emptyList())
 
     var showUncalibratedDialog by remember { mutableStateOf(false) }
     var resumeTick by remember { mutableStateOf(0) }
@@ -127,8 +128,8 @@ fun HomeScreen(
         ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
     }
 
-    val smsAvailability = remember(resumeTick, emergencyContact) {
-        smsNotifier.checkAvailability()
+    val smsAvailability = remember(resumeTick, emergencyContacts) {
+        smsNotifier.checkAvailability(emergencyContacts.firstOrNull())
     }
     var isOfflineHindiVoiceAvailable by remember { mutableStateOf<Boolean?>(null) }
     var speechReadiness by remember { mutableStateOf<SpeechReadiness?>(null) }
@@ -173,7 +174,7 @@ fun HomeScreen(
     }
 
     val isCalibrated = baseline?.isValid == true
-    val isSmsUnavailable = smsAvailability != SmsAvailability.READY || emergencyContact.isBlank()
+    val isSmsUnavailable = smsAvailability != SmsAvailability.READY || emergencyContacts.isEmpty()
 
     if (showUncalibratedDialog) {
         AlertDialog(
@@ -316,8 +317,8 @@ fun HomeScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.padding(bottom = 14.dp)
                 ) {
-                    EyeHorizonBrandMark(
-                        modifier = Modifier.size(120.dp)
+                    JaagritHeroMark(
+                        modifier = Modifier.size(112.dp)
                     )
 
                     Spacer(modifier = Modifier.height(10.dp))
@@ -388,7 +389,7 @@ fun HomeScreen(
 
                         // Row 3: Emergency SMS (merged contact + SMS state)
                         val (smsText, smsReady) = when {
-                            emergencyContact.isBlank() -> Pair(stringResource(R.string.status_contact_not_set), false)
+                            emergencyContacts.isEmpty() -> Pair(stringResource(R.string.status_contact_not_set), false)
                             smsAvailability == SmsAvailability.READY -> Pair(stringResource(R.string.status_ready), true)
                             smsAvailability == SmsAvailability.NO_SIM -> Pair(stringResource(R.string.status_no_sim), false)
                             smsAvailability == SmsAvailability.NO_PERMISSION -> Pair(stringResource(R.string.status_permission_needed), false)
@@ -599,7 +600,7 @@ fun HomeScreen(
                     }
                 }
 
-                // Two equal text buttons: History & Recalibrate (48dp each)
+                // Three action buttons: Dashboard, History & Recalibrate (48dp each)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -613,13 +614,16 @@ fun HomeScreen(
                             .height(48.dp),
                         shape = RoundedCornerShape(14.dp),
                         border = BorderStroke(1.2.dp, HorizonForest),
+                        contentPadding = PaddingValues(horizontal = 4.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = HorizonForest
                         )
                     ) {
                         Text(
                             text = stringResource(R.string.dashboard_btn_open),
-                            fontSize = 13.sp,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            softWrap = false,
                             fontWeight = FontWeight.Bold,
                             fontFamily = MuktaFontFamily,
                             color = HorizonForest
@@ -633,13 +637,16 @@ fun HomeScreen(
                             .height(48.dp),
                         shape = RoundedCornerShape(14.dp),
                         border = BorderStroke(1.dp, HorizonMuted),
+                        contentPadding = PaddingValues(horizontal = 4.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = HorizonForest
                         )
                     ) {
                         Text(
                             text = stringResource(R.string.btn_history_short),
-                            fontSize = 13.sp,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            softWrap = false,
                             fontWeight = FontWeight.SemiBold,
                             fontFamily = MuktaFontFamily,
                             color = HorizonForest
@@ -653,6 +660,7 @@ fun HomeScreen(
                             .height(48.dp),
                         shape = RoundedCornerShape(14.dp),
                         border = BorderStroke(1.dp, HorizonMuted),
+                        contentPadding = PaddingValues(horizontal = 4.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = HorizonForest
                         )
@@ -661,7 +669,9 @@ fun HomeScreen(
                             text = stringResource(
                                 if (isCalibrated) R.string.btn_recalibrate_short else R.string.btn_calibrate_short
                             ),
-                            fontSize = 13.sp,
+                            fontSize = 11.5.sp,
+                            maxLines = 1,
+                            softWrap = false,
                             fontWeight = FontWeight.SemiBold,
                             fontFamily = MuktaFontFamily,
                             color = HorizonForest
@@ -765,109 +775,24 @@ private fun ReadinessRow(
 }
 
 /**
- * Bespoke Canvas-drawn eye-and-horizon BrandMark (~120dp).
- * Harmonious geometric composition of the eye contour (vigilance)
- * meeting the highway perspective and rising horizon in Horizon tokens.
+ * Modern Jaagrit BrandMark (~112dp).
+ * Polished visual identity combining the vigilance eye silhouette,
+ * radiant alert core, and forward highway horizon.
  */
+@Composable
+fun JaagritHeroMark(
+    modifier: Modifier = Modifier
+) {
+    Image(
+        painter = painterResource(R.drawable.ic_jaagrit_logo),
+        contentDescription = stringResource(R.string.app_name),
+        modifier = modifier
+    )
+}
+
 @Composable
 fun EyeHorizonBrandMark(
     modifier: Modifier = Modifier
 ) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-
-        // 1. Soft circular base dish
-        drawCircle(
-            color = HorizonMuted,
-            radius = w * 0.46f,
-            center = Offset(w * 0.5f, h * 0.5f)
-        )
-
-        // 2. Horizon line (road meeting the sky)
-        val horizonY = h * 0.52f
-        drawLine(
-            color = HorizonForest,
-            start = Offset(w * 0.16f, horizonY),
-            end = Offset(w * 0.84f, horizonY),
-            strokeWidth = 2.dp.toPx(),
-            cap = StrokeCap.Round
-        )
-
-        // Road perspective vanishing into the horizon
-        val roadPath = Path().apply {
-            moveTo(w * 0.38f, h * 0.84f)
-            lineTo(w * 0.48f, horizonY)
-            lineTo(w * 0.52f, horizonY)
-            lineTo(w * 0.62f, h * 0.84f)
-            close()
-        }
-        drawPath(
-            path = roadPath,
-            color = HorizonForest.copy(alpha = 0.10f)
-        )
-
-        // Lime centerline on the highway
-        drawLine(
-            color = HorizonLime,
-            start = Offset(w * 0.5f, h * 0.82f),
-            end = Offset(w * 0.5f, horizonY + 5.dp.toPx()),
-            strokeWidth = 2.dp.toPx(),
-            cap = StrokeCap.Round
-        )
-
-        // 3. Eye Contour: Upper and lower eyelid arcs
-        val leftCornerX = w * 0.20f
-        val rightCornerX = w * 0.80f
-        val midY = h * 0.48f
-
-        val upperLid = Path().apply {
-            moveTo(leftCornerX, midY)
-            quadraticTo(
-                w * 0.50f, h * 0.20f,
-                rightCornerX, midY
-            )
-        }
-        drawPath(
-            path = upperLid,
-            color = HorizonForest,
-            style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round)
-        )
-
-        val lowerLid = Path().apply {
-            moveTo(leftCornerX, midY)
-            quadraticTo(
-                w * 0.50f, h * 0.76f,
-                rightCornerX, midY
-            )
-        }
-        drawPath(
-            path = lowerLid,
-            color = HorizonForest,
-            style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round)
-        )
-
-        // 4. Iris (Forest vigilance)
-        val irisRadius = w * 0.165f
-        drawCircle(
-            color = HorizonForest,
-            radius = irisRadius,
-            center = Offset(w * 0.5f, midY)
-        )
-
-        // 5. Center Pupil (Vibrant Lime Alert Core)
-        val pupilRadius = w * 0.082f
-        drawCircle(
-            color = HorizonLime,
-            radius = pupilRadius,
-            center = Offset(w * 0.5f, midY)
-        )
-
-        // 6. Specular catchlight
-        drawCircle(
-            color = Color.White,
-            radius = w * 0.024f,
-            center = Offset(w * 0.53f, midY - w * 0.032f)
-        )
-    }
+    JaagritHeroMark(modifier = modifier)
 }

@@ -79,6 +79,7 @@ data class MonitoringUiState(
     val suggestRecalibration: Boolean = false,
     val demoTimers: Boolean = false,
     val quickCalibration: Boolean = false,
+    val companionEnabled: Boolean = false,
     val voiceAnswerText: String? = null,
     val isListening: Boolean = false,
     val lastRecognizedText: String? = null,
@@ -243,20 +244,25 @@ class MonitoringPipeline(
             val baseline = baselineStore.getBaseline() ?: Baseline.DEFAULT
             val demoTimersSaved = settingsStore.isDemoTimersEnabled()
             val quickCalibSaved = settingsStore.isQuickCalibrationEnabled()
+            val companionSaved = settingsStore.isCompanionEnabled()
             currentBaseline = baseline
             currentConfig = currentConfig.copy(
                 demoTimers = demoTimersSaved,
-                quickCalibration = quickCalibSaved
+                quickCalibration = quickCalibSaved,
+                companionEnabled = companionSaved
             )
 
-            Log.d(tag, "Loaded driver baseline: threshold=${baseline.threshold}, isValid=${baseline.isValid}, demoTimers=$demoTimersSaved")
-            engine = FatigueEngine(config = currentConfig, clock = clock, baseline = currentBaseline)
+            val appLanguageSaved = settingsStore.getAppLanguage()
+            val initialLang = if (appLanguageSaved == "en") Lang.EN else Lang.HI
+            Log.d(tag, "Loaded driver baseline: threshold=${baseline.threshold}, isValid=${baseline.isValid}, demoTimers=$demoTimersSaved, companionEnabled=$companionSaved, lang=$initialLang")
+            engine = FatigueEngine(config = currentConfig, clock = clock, baseline = currentBaseline, lang = initialLang)
             engine.resetDrive(driveStartTimeMs)
 
             _uiState.update {
                 it.copy(
                     demoTimers = demoTimersSaved,
-                    quickCalibration = quickCalibSaved
+                    quickCalibration = quickCalibSaved,
+                    companionEnabled = companionSaved
                 )
             }
 
@@ -267,6 +273,14 @@ class MonitoringPipeline(
                     is PipelineEvent.ImAwake -> processImAwake()
                     is PipelineEvent.Voice -> processVoice(event.event)
                 }
+            }
+        }
+
+        // 3b. Dynamically track app language changes from settings
+        scope.launch {
+            settingsStore.appLanguageFlow.collect { langCode ->
+                val newLang = if (langCode == "en") Lang.EN else Lang.HI
+                engine.lang = newLang
             }
         }
 
@@ -329,7 +343,7 @@ class MonitoringPipeline(
         scope.launch(engineDispatcher) {
             val newDemo = !currentConfig.demoTimers
             currentConfig = currentConfig.copy(demoTimers = newDemo)
-            engine = FatigueEngine(config = currentConfig, clock = clock, baseline = currentBaseline)
+            engine = FatigueEngine(config = currentConfig, clock = clock, baseline = currentBaseline, lang = engine.lang)
             settingsStore.setDemoTimers(newDemo)
             _uiState.update { it.copy(demoTimers = newDemo) }
             Log.i(tag, "Toggled DEMO_TIMERS: $newDemo (L4=${currentConfig.l4AfterL3Ms}ms, L5=${currentConfig.l5AfterL4Ms}ms)")
@@ -343,6 +357,17 @@ class MonitoringPipeline(
             settingsStore.setQuickCalibration(newQuick)
             _uiState.update { it.copy(quickCalibration = newQuick) }
             Log.i(tag, "Toggled QUICK_CALIBRATION: $newQuick")
+        }
+    }
+
+    fun toggleCompanion() {
+        scope.launch(engineDispatcher) {
+            val newCompanion = !currentConfig.companionEnabled
+            currentConfig = currentConfig.copy(companionEnabled = newCompanion)
+            engine = FatigueEngine(config = currentConfig, clock = clock, baseline = currentBaseline, lang = engine.lang)
+            settingsStore.setCompanionEnabled(newCompanion)
+            _uiState.update { it.copy(companionEnabled = newCompanion) }
+            Log.i(tag, "Toggled COMPANION: $newCompanion")
         }
     }
 
@@ -521,6 +546,7 @@ class MonitoringPipeline(
                 suggestRecalibration = output.suggestRecalibration,
                 demoTimers = currentConfig.demoTimers,
                 quickCalibration = currentConfig.quickCalibration,
+                companionEnabled = currentConfig.companionEnabled,
                 companion = output.companion,
                 phoneTemperatureC = thermal.temperatureCelsius,
                 isThermalThrottling = thermal.isThrottling,
@@ -635,9 +661,6 @@ class MonitoringPipeline(
                 }
                 is Action.AskQuestion -> {
                     Log.d(tag, "Action.AskQuestion triggered: ${action.q.prompt}")
-                    val lang = runBlocking { settingsStore.getAppLanguage() }
-                    val speechLang = if (lang == "hi") Lang.HI else Lang.EN
-                    speaker.speak(action.q.prompt, speechLang, urgent = false)
                 }
             }
         }
@@ -830,7 +853,7 @@ class MonitoringPipeline(
                         recognitionLatencyMs = latency
                     )
                 }
-                if (_uiState.value.companion?.text != null && intent == DriverIntent.UNKNOWN) {
+                if (currentConfig.companionEnabled && _uiState.value.companion?.text != null && intent == DriverIntent.UNKNOWN) {
                     submitCompanionAnswer(spokenText)
                 } else {
                     executeIntent(intent, onNavigateToCalibration)
@@ -874,6 +897,7 @@ class MonitoringPipeline(
      * Submit an answer to the currently active companion question (via button or voice).
      */
     fun submitCompanionAnswer(text: String) {
+        if (!currentConfig.companionEnabled) return
         Log.i(tag, "Driver submitted companion answer: '$text'")
         eventChannel.trySend(PipelineEvent.Voice(VoiceEvent.Answer(text = text, latencyMs = 0L)))
     }
@@ -882,6 +906,7 @@ class MonitoringPipeline(
      * Dismiss the companion prompt (silences companion prompts for 2 minutes).
      */
     fun dismissCompanion() {
+        if (!currentConfig.companionEnabled) return
         Log.i(tag, "Driver dismissed companion")
         eventChannel.trySend(PipelineEvent.Voice(VoiceEvent.Dismiss))
     }

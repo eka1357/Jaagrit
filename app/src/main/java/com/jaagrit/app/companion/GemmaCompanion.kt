@@ -77,7 +77,11 @@ class GemmaCompanion(
 
         val startMs = System.currentTimeMillis()
         return try {
-            val prompt = "Generate a simple arithmetic question (addition or subtraction under 30) for a driver:"
+            val prompt = if (ctx.lang == Lang.HI) {
+                "Generate a short, interesting, scientifically accurate awakening fact in Hindi for a driver (format: Fact | Ack):"
+            } else {
+                "Generate a short, interesting, scientifically accurate awakening fact in English for a driver (format: Fact | Ack):"
+            }
             val generated = generator.invoke(prompt)?.trim()
             val latency = System.currentTimeMillis() - startMs
 
@@ -109,12 +113,16 @@ class GemmaCompanion(
 
     private fun parseGeneratedQuestion(text: String?, ctx: CompanionContext): CompanionQuestion? {
         if (text.isNullOrBlank()) return null
-        // Expected format e.g. "9 + 8 = ? | 17" or "What is 7 plus 6? | 13"
+        val forbidden = listOf("<unk>", "<pad>", "http://", "https://", "null", "undefined")
+        if (forbidden.any { text.contains(it, ignoreCase = true) }) return null
+
         val parts = text.split("|").map { it.trim() }
         if (parts.size >= 2) {
             val qPrompt = parts[0]
-            val answerInt = parts[1].toIntOrNull()
+            val rawAnswer = parts[1]
+            val answerInt = rawAnswer.toIntOrNull()
             if (qPrompt.isNotBlank() && answerInt != null && answerInt in 0..100) {
+                // Backwards-compatible numeric question handling (e.g. for legacy tests)
                 val distractors = listOf(answerInt + 5, answerInt - 5, answerInt + 10)
                     .filter { it >= 0 && it != answerInt }
                     .take(config.mathChoiceCount - 1)
@@ -125,6 +133,21 @@ class GemmaCompanion(
                     answer = answerInt.toString(),
                     maxWaitMs = config.defaultMathMaxWaitMs,
                     choices = choices
+                )
+            } else if (qPrompt.length in 5..250 && rawAnswer.isNotBlank()) {
+                val secondaryAck = if (ctx.lang == Lang.HI) "सुना" else "Got it"
+                val distinctChoices = listOf(rawAnswer, secondaryAck).distinct()
+                val finalChoices = if (distinctChoices.size >= 2) {
+                    distinctChoices
+                } else {
+                    distinctChoices + if (ctx.lang == Lang.HI) "अलर्ट हूँ" else "I'm alert"
+                }
+                return CompanionQuestion(
+                    id = (System.currentTimeMillis() % 100000).toInt(),
+                    prompt = qPrompt,
+                    answer = rawAnswer,
+                    maxWaitMs = config.defaultMathMaxWaitMs,
+                    choices = finalChoices
                 )
             }
         }

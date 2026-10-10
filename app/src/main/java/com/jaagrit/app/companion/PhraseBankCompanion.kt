@@ -22,6 +22,8 @@ class PhraseBankCompanion(
     private var lastQuestionIndex = -1
     private var patternLineUsed = false
 
+    private val recentFactIndices = ArrayDeque<Int>()
+
     override fun opener(ctx: CompanionContext): String {
         val index = if (ctx.hasSleepyHistoryNow && !patternLineUsed) {
             patternLineUsed = true
@@ -37,26 +39,40 @@ class PhraseBankCompanion(
     }
 
     override fun question(ctx: CompanionContext): CompanionQuestion {
-        val candidates = Phrases.MATH_QUESTIONS.indices.filter { it != lastQuestionIndex }
-        val index = candidates[random.nextInt(candidates.size)]
+        val facts = Phrases.AWAKENING_FACTS
+        val maxRecent = (facts.size / 2).coerceAtLeast(1)
+        val candidates = facts.indices.filter { it !in recentFactIndices }
+        val index = if (candidates.isNotEmpty()) {
+            candidates[random.nextInt(candidates.size)]
+        } else {
+            recentFactIndices.clear()
+            val fallbackCandidates = facts.indices.filter { it != lastQuestionIndex }
+            if (fallbackCandidates.isNotEmpty()) {
+                fallbackCandidates[random.nextInt(fallbackCandidates.size)]
+            } else {
+                0
+            }
+        }
+
+        recentFactIndices.addLast(index)
+        if (recentFactIndices.size > maxRecent) {
+            recentFactIndices.removeFirst()
+        }
         lastQuestionIndex = index
-        val item = Phrases.MATH_QUESTIONS[index]
+
+        val item = facts[index]
+        val promptText = item.prompt.pick(ctx.lang)
+        val defaultAck = item.defaultAck.pick(ctx.lang)
+        val secondaryAck = item.secondaryAck.pick(ctx.lang)
+        val choices = listOf(defaultAck, secondaryAck)
+
         return CompanionQuestion(
             id = item.id,
-            prompt = item.prompt.pick(ctx.lang),
-            answer = item.answer.toString(),
+            prompt = promptText,
+            answer = defaultAck,
             maxWaitMs = item.maxWaitMs.takeIf { it > 0L } ?: config.defaultMathMaxWaitMs,
-            choices = choicesFor(item.answer)
+            choices = choices
         )
-    }
-
-    /** Correct answer plus nearby distractors (common slips of 5 and 10), shuffled. */
-    private fun choicesFor(answer: Int): List<String> {
-        val distractors = listOf(answer + 10, answer - 10, answer + 5, answer - 5)
-            .filter { it >= 0 && it != answer }
-            .distinct()
-            .take((config.mathChoiceCount - 1).coerceAtLeast(0))
-        return (distractors + answer).shuffled(random).map { it.toString() }
     }
 }
 

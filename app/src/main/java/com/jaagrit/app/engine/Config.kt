@@ -11,6 +11,8 @@ data class Config(
     val demoTimers: Boolean = false,
     // Separate flag for quick calibration (open 5s, closed 2s, D9)
     val quickCalibration: Boolean = false,
+    // Companion interaction flag (L1/L2 spoken openers & math questions, default OFF)
+    val companionEnabled: Boolean = false,
 
     // Eye closure detection (ENG-1, LAD-1)
     // Continuous eye closure duration required to confirm a microsleep / critical event

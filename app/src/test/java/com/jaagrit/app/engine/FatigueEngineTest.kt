@@ -3,7 +3,9 @@ package com.jaagrit.app.engine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import com.jaagrit.app.speech.Phrases
 import org.junit.Before
 import org.junit.Test
 
@@ -420,6 +422,116 @@ class FatigueEngineTest {
         assertEquals(normalFrame.state, normalTick.state)
         assertEquals(Level.L0, normalTick.level)
         assertEquals(DriverState.NORMAL, normalTick.state)
+    }
+
+    @Test
+    fun testCompanionDisabledByDefault_noL1L2CompanionLinesAndEyeClosureSafetyPreserved() {
+        // engine uses Config.DEFAULT where companionEnabled is false
+        assertEquals(false, engine.config.companionEnabled)
+        engine.resetDrive(clock.nowMs())
+
+        // Drive enters L2 via high PERCLOS
+        for (i in 0 until 50) {
+            clock.advance(100L)
+            val ear = if (i % 6 == 0) 0.05f else 0.28f
+            val out = engine.onFrame(frame(earAvg = ear, pitchDeg = 5f))
+            assertNull("Companion status in output must be null when disabled", out.companion)
+            assertFalse("Companion AskQuestion must never be emitted when disabled", out.actions.any { it is Action.AskQuestion })
+        }
+
+        val tickOut = engine.onTick()
+        assertEquals(Level.L2, tickOut.level)
+        assertNull("Companion status in tick output must be null when disabled", tickOut.companion)
+        assertFalse("No companion actions on tick when disabled", tickOut.actions.any { it is Action.AskQuestion })
+
+        // Eye closure alarm still works identically: 2.5s closure fires L3
+        var l3Fired = false
+        for (i in 0 until 26) {
+            clock.advance(100L)
+            val out = engine.onFrame(frame(earAvg = 0.04f))
+            if (out.actions.any { it is Action.ShowRedFlash }) {
+                l3Fired = true
+                assertEquals(Level.L3, out.level)
+                assertEquals(DriverState.CRITICAL, out.state)
+                break
+            }
+        }
+        assertTrue("L3 eye closure alarm must trigger when companion is disabled", l3Fired)
+
+        // Ladder progresses to L4 (10s) and L5 (20s)
+        clock.advance(10_000L)
+        val l4 = engine.onTick()
+        assertTrue("L4 family clip must fire", l4.actions.any { it is Action.PlayFamilyClip })
+
+        clock.advance(20_000L)
+        val l5 = engine.onTick()
+        assertTrue("L5 SMS must fire", l5.actions.any { it is Action.SendSms })
+    }
+
+    @Test
+    fun testCompanionEnabled_deliversAwakeningFactsMatchingLanguage_noOldMathQuestions() {
+        val engEngine = FatigueEngine(
+            config = Config.DEFAULT.copy(companionEnabled = true),
+            clock = clock,
+            baseline = baseline,
+            lang = Lang.EN
+        )
+        engEngine.resetDrive(clock.nowMs())
+
+        // Drive enters L2 via high PERCLOS
+        var l2PromptEmitted = false
+        for (i in 0 until 50) {
+            clock.advance(100L)
+            val ear = if (i % 6 == 0) 0.05f else 0.28f
+            val out = engEngine.onFrame(frame(earAvg = ear, pitchDeg = 5f))
+            val ask = out.actions.filterIsInstance<Action.AskQuestion>().firstOrNull()
+            if (ask != null) {
+                l2PromptEmitted = true
+                val prompt = ask.q.prompt
+                assertTrue("Prompt must be from verified English awakening facts", Phrases.AWAKENING_FACTS.any { it.prompt.en == prompt })
+                assertFalse("Prompt must not be old math question", prompt.contains("minus") || prompt.contains("plus") || prompt.contains("Double"))
+                assertEquals("I'm alert", ask.q.answer)
+                assertTrue(ask.q.choices.contains("Got it"))
+                break
+            }
+        }
+        assertTrue("L2 companion prompt must be emitted when enabled", l2PromptEmitted)
+
+        // Test Hindi mode
+        val hiEngine = FatigueEngine(
+            config = Config.DEFAULT.copy(companionEnabled = true),
+            clock = clock,
+            baseline = baseline,
+            lang = Lang.HI
+        )
+        hiEngine.resetDrive(clock.nowMs())
+
+        var l2HiPromptEmitted = false
+        for (i in 0 until 50) {
+            clock.advance(100L)
+            val ear = if (i % 6 == 0) 0.05f else 0.28f
+            val out = hiEngine.onFrame(frame(earAvg = ear, pitchDeg = 5f))
+            val ask = out.actions.filterIsInstance<Action.AskQuestion>().firstOrNull()
+            if (ask != null) {
+                l2HiPromptEmitted = true
+                val prompt = ask.q.prompt
+                assertTrue("Prompt must be from verified Hindi awakening facts", Phrases.AWAKENING_FACTS.any { it.prompt.hi == prompt })
+                assertFalse("Prompt must not be old math question", prompt.contains("घटा") || prompt.contains("डबल") || prompt.contains("जोड़"))
+                assertEquals("अलर्ट हूँ", ask.q.answer)
+                assertTrue(ask.q.choices.contains("सुना"))
+                break
+            }
+        }
+        assertTrue("L2 Hindi companion prompt must be emitted", l2HiPromptEmitted)
+    }
+
+    @Test
+    fun testL1OpenersDoNotContainMathQuestions() {
+        // Verify all openers in PhraseBank do not contain arithmetic/math questions
+        for (opener in Phrases.OPENERS) {
+            assertFalse("Hindi opener must not contain math number doubling game", opener.hi.contains("डबल करके बता"))
+            assertFalse("English opener must not contain math number doubling game", opener.en.contains("double it"))
+        }
     }
 }
 

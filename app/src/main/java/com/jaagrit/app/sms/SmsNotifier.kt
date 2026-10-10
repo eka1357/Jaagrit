@@ -80,7 +80,7 @@ class SmsNotifier(
         val simState = telephonyManager?.simState ?: TelephonyManager.SIM_STATE_UNKNOWN
         val contact = emergencyContact ?: try {
             kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
-                settingsStore.getEmergencyContact().trim()
+                settingsStore.getEmergencyContacts().joinToString(",")
             }
         } catch (_: Exception) {
             ""
@@ -130,10 +130,12 @@ class SmsNotifier(
     }
 
     /**
-     * Dispatch emergency SMS to configured emergency contact with last known location.
+     * Dispatch emergency SMS to every configured emergency contact (up to 3) with last known location.
      *
-     * Intermediate status: Calls [onStatusUpdate] with "Sending SMS..." before transmission.
-     * Success status: Returns [SmsResult.Success] ONLY after the sent PendingIntent reports RESULT_OK.
+     * Intermediate status: Calls [onStatusUpdate] with "Sending SMS..." before each transmission.
+     * Success: Returns [SmsResult.Success] if at least one recipient's sent PendingIntent reported RESULT_OK.
+     * [SmsResult.Success.maskedNumber] lists only the confirmed recipients (plus "k of n" on partial delivery).
+     * Failure: Returns [SmsResult.Failure] only if no recipient was confirmed.
      */
     suspend fun sendEmergencyAlert(
         totalAlerts: Int,
@@ -152,15 +154,41 @@ class SmsNotifier(
             return SmsResult.Failure(reason)
         }
 
-        val emergencyContact = settingsStore.getEmergencyContact().trim()
-        val maskedNumber = SettingsStore.maskPhoneNumber(emergencyContact)
-        val locationStr = getLastKnownLocationString(context)
-        val messageBody = prepareEmergencyMessage(totalAlerts)
+        // Re-validate stored numbers so a malformed entry can't abort delivery to the others
+        val stored = SettingsStore.compactContacts(settingsStore.getEmergencyContacts())
+        val recipients = stored.filter { SettingsStore.isValidPhoneNumber(it) }
+        stored.filterNot { SettingsStore.isValidPhoneNumber(it) }.forEach {
+            Log.w(tag, "SmsNotifier: Skipping invalid stored contact ${SettingsStore.maskPhoneNumber(it)}")
+        }
+        if (recipients.isEmpty()) {
+            return SmsResult.Failure("No valid emergency contact number configured")
+        }
 
-        // Pre-transmission intermediate status: show "Sending SMS..." before confirmation
-        val sendingStatus = "Sending SMS to $maskedNumber..."
-        Log.i(tag, "SmsNotifier: $sendingStatus")
-        onStatusUpdate?.invoke(sendingStatus)
+        val messageBody = prepareEmergencyMessage(totalAlerts)
+        val results = recipients.mapIndexed { index, number ->
+            val masked = SettingsStore.maskPhoneNumber(number)
+            val sendingStatus = if (recipients.size > 1) {
+                "Sending SMS to $masked (${index + 1}/${recipients.size})..."
+            } else {
+                "Sending SMS to $masked..."
+            }
+            Log.i(tag, "SmsNotifier: $sendingStatus")
+            onStatusUpdate?.invoke(sendingStatus)
+            sendToRecipient(number, messageBody, index)
+        }
+        return summarizeResults(results)
+    }
+
+    /**
+     * Sends [messageBody] to one recipient and suspends until its sent PendingIntent reports.
+     * [recipientIndex] keeps broadcast actions and request codes unique per recipient.
+     */
+    private suspend fun sendToRecipient(
+        emergencyContact: String,
+        messageBody: String,
+        recipientIndex: Int
+    ): SmsResult {
+        val maskedNumber = SettingsStore.maskPhoneNumber(emergencyContact)
 
         // 5. Send via SmsManager and await sent PendingIntent RESULT_OK
         return try {
@@ -168,7 +196,8 @@ class SmsNotifier(
                 ?: @Suppress("DEPRECATION") SmsManager.getDefault()
 
             val parts = smsManager.divideMessage(messageBody)
-            val action = "${context.packageName}.SMS_SENT_${System.currentTimeMillis()}"
+            val action = "${context.packageName}.SMS_SENT_${System.currentTimeMillis()}_$recipientIndex"
+            val requestCodeBase = recipientIndex * REQUEST_CODE_STRIDE
 
             val timeoutMs = 20_000L
             val transmissionResult = withTimeoutOrNull(timeoutMs) {
@@ -232,7 +261,7 @@ class SmsNotifier(
                         if (parts.size <= 1) {
                             val sentIntent = PendingIntent.getBroadcast(
                                 context,
-                                0,
+                                requestCodeBase,
                                 Intent(action).setPackage(context.packageName),
                                 PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
                             )
@@ -247,7 +276,7 @@ class SmsNotifier(
                                 sentIntents.add(
                                     PendingIntent.getBroadcast(
                                         context,
-                                        i,
+                                        requestCodeBase + i,
                                         intent,
                                         PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
                                     )
@@ -278,6 +307,31 @@ class SmsNotifier(
     }
 
     companion object {
+        // Spaces PendingIntent request codes per recipient; a long L5 SMS is at most a few parts.
+        private const val REQUEST_CODE_STRIDE = 100
+
+        /**
+         * Combines per-recipient results. Success if any recipient was confirmed (RESULT_OK);
+         * on partial delivery the masked label reads "k of n contacts (masked list)".
+         */
+        fun summarizeResults(results: List<SmsResult>): SmsResult {
+            val successes = results.filterIsInstance<SmsResult.Success>()
+            val failures = results.filterIsInstance<SmsResult.Failure>()
+            if (successes.isEmpty()) {
+                val reason = failures.map { it.reason }.distinct().joinToString("; ")
+                    .ifEmpty { "No recipients" }
+                return SmsResult.Failure(
+                    if (results.size > 1) "all ${results.size} contacts failed ($reason)" else reason
+                )
+            }
+            val maskedList = successes.joinToString(", ") { it.maskedNumber }
+            val label = if (failures.isEmpty()) {
+                maskedList
+            } else {
+                "${successes.size} of ${results.size} contacts ($maskedList)"
+            }
+            return SmsResult.Success(maskedNumber = label, message = "SMS sent to $label")
+        }
         /**
          * Translates Android telephony resultCode into human-readable description.
          */

@@ -23,7 +23,8 @@ class FatigueEngine(
     val clock: Clock = Clock.SYSTEM,
     val baseline: Baseline = Baseline.DEFAULT,
     val ladder: InterventionLadder = InterventionLadder(config, clock),
-    val companion: CompanionLoop = CompanionLoop(config, clock, PhraseBankCompanion(config), baseline)
+    val companion: CompanionLoop = CompanionLoop(config, clock, PhraseBankCompanion(config), baseline),
+    var lang: Lang = Lang.HI
 ) {
     // Drive start timestamp
     private var driveStartTimeMs: Long = clock.nowMs()
@@ -171,6 +172,7 @@ class FatigueEngine(
             activeLevel = activeLevel,
             isEyesClosed = isClosed,
             isAlertActive = ladder.isAlertActive,
+            lang = lang,
             now = now
         )
         val companionActions = when (companionOutcome) {
@@ -210,7 +212,7 @@ class FatigueEngine(
                 blinkRatePerMin = currentBlinkRatePerMin(now),
                 blinkBaselinePerMin = blinkBaselineRate
             ),
-            companion = companion.status(now)
+            companion = if (config.companionEnabled) companion.status(now) else null
         )
     }
 
@@ -238,7 +240,7 @@ class FatigueEngine(
                 l5CountdownSeconds = ladder.getL5RemainingSeconds(now),
                 falseAlertCount = ladder.falseAlertCount,
                 suggestRecalibration = ladder.suggestRecalibration,
-                companion = companion.status(now)
+                companion = if (config.companionEnabled) companion.status(now) else null
             )
         }
 
@@ -257,6 +259,7 @@ class FatigueEngine(
             activeLevel = activeLevel,
             isEyesClosed = currentClosureDuration > 0L,
             isAlertActive = ladder.isAlertActive,
+            lang = lang,
             now = now
         )
         val companionActions = when (companionOutcome) {
@@ -297,7 +300,7 @@ class FatigueEngine(
             l5CountdownSeconds = ladder.getL5RemainingSeconds(now),
             falseAlertCount = ladder.falseAlertCount,
             suggestRecalibration = ladder.suggestRecalibration,
-            companion = companion.status(now)
+            companion = if (config.companionEnabled) companion.status(now) else null
         )
     }
 
@@ -309,9 +312,9 @@ class FatigueEngine(
         val actions = mutableListOf<Action>()
 
         if (e is VoiceEvent.Dismiss) {
-            actions.addAll(companion.onVoice(e, now = now))
+            actions.addAll(companion.onVoice(e, lang = lang, now = now))
         } else if (e is VoiceEvent.Answer) {
-            actions.addAll(companion.onVoice(e, now = now))
+            actions.addAll(companion.onVoice(e, lang = lang, now = now))
             actions.addAll(ladder.processResponse(now, "Answer: ${e.text}"))
             closureStartTimeMs = null
             lastClosedFrameTimeMs = null

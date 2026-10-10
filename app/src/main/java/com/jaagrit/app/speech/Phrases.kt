@@ -47,8 +47,8 @@ object Phrases {
         Line("एक सवाल — तेरा फेवरेट क्रिकेटर कौन है?", "Quick one — who's your favorite cricketer?"),
         // "Aaj ka din kaisa raha?"
         Line("आज का दिन कैसा रहा?", "How was your day?"),
-        // "Chal ek game khelte hain. Main number bolunga, tu double karke bata."
-        Line("चल एक गेम खेलते हैं। मैं नंबर बोलूँगा, तू डबल करके बता।", "Let's play a game. I say a number, you double it."),
+        // "Kya aap jaante hain? Jaagte samay aapka dimaag ek bulb jalaane jitni bijli paida karta hai."
+        Line("क्या आप जानते हैं? जागते समय आपका दिमाग एक बल्ब जलाने जितनी बिजली पैदा करता है।", "Did you know? While awake, your brain produces enough electricity to power a small bulb."),
         // "Pichli baar bhi is waqt neend aayi thi. Chai ka time hai."
         Line("पिछली बार भी इस वक़्त नींद आई थी। चाय का टाइम है।", "Last time you got sleepy around now too. Chai time."),
         // "Ek baat bata — agar ek din chutti milti toh kya karta?"
@@ -64,21 +64,131 @@ object Phrases {
     )
     const val PATTERN_OPENER_INDEX = 4
 
-    // 5. Cognitive questions (L2, COM-3) — per-question max wait from PHRASES.md
-    val MATH_QUESTIONS = listOf(
-        // "Sau mein se tees ghata. Kitna bacha?"
-        MathItem(1, Line("सौ में से तीस घटा। कितना बचा?", "100 minus 30. What's left?"), 70, 5000L),
-        // "Pachaas ko double kar. Kitna hua?"
-        MathItem(2, Line("पचास को डबल कर। कितना हुआ?", "Double 50. What do you get?"), 100, 4000L),
-        // "Pandrah aur baaees jod. Kitna hua?"
-        MathItem(3, Line("पंद्रह और बाईस जोड़। कितना हुआ?", "15 plus 22. What do you get?"), 37, 5000L),
-        // "Do sau mein se ek sau pachchees ghata. Kitna bacha?"
-        MathItem(4, Line("दो सौ में से एक सौ पच्चीस घटा। कितना बचा?", "200 minus 125. What's left?"), 75, 5000L),
-        // "Solah ko double kar, phir das jod. Kitna hua?"
-        MathItem(5, Line("सोलह को डबल कर, फिर दस जोड़। कितना हुआ?", "Double 16, then add 10."), 42, 6000L),
-        // "Ek sau bayalis mein se atthawan ghata. Kitna bacha?"
-        MathItem(6, Line("एक सौ बयालीस में से अट्ठावन घटा। कितना बचा?", "142 minus 58. What's left?"), 84, 6000L)
+    /** A cognitive awakening fact item for L2 companion engagement. */
+    data class AwakeningFact(
+        val id: Int,
+        val prompt: Line,
+        val defaultAck: Line = Line("अलर्ट हूँ", "I'm alert"),
+        val secondaryAck: Line = Line("सुना", "Got it"),
+        val maxWaitMs: Long = 5000L
     )
+
+    // 5. Cognitive awakening facts (L2, COM-3) — scientifically accurate, short, stimulating facts
+    val AWAKENING_FACTS = listOf(
+        // Fact 1: Sunlight to Earth (Space)
+        AwakeningFact(
+            id = 1,
+            prompt = Line(
+                // "Surya ka prakash prithvi tak pahunchne mein lagbhag 8 minute 20 second leta hai."
+                "सूर्य का प्रकाश पृथ्वी तक पहुँचने में लगभग 8 मिनट 20 सेकंड लेता है।",
+                "Sunlight takes about 8 minutes and 20 seconds to reach Earth."
+            )
+        ),
+        // Fact 2: Brain oxygen and energy consumption (Human Brain)
+        AwakeningFact(
+            id = 2,
+            prompt = Line(
+                // "Dimaag shareer ka sirf 2% vajan rakhta hai, lekin 20% oxygen aur energy istemaal karta hai."
+                "दिमाग शरीर का सिर्फ 2% वजन रखता है, लेकिन 20% ऑक्सीजन और ऊर्जा इस्तेमाल करता है।",
+                "Your brain is only 2% of your body weight, but consumes 20% of your oxygen and energy."
+            )
+        ),
+        // Fact 3: Lightning temperature (Nature / Physics)
+        AwakeningFact(
+            id = 3,
+            prompt = Line(
+                // "Aakashiy bijli ka taapmaan 30,000 degree Celsius tak ho sakta hai — sooraj ki satah se paanch guna zyada garm."
+                "आकाशीय बिजली का तापमान 30,000 डिग्री सेल्सियस तक हो सकता है — सूरज की सतह से पाँच गुना ज़्यादा गर्म।",
+                "A lightning bolt can reach 30,000 degrees Celsius — five times hotter than the surface of the Sun."
+            )
+        ),
+        // Fact 4: Sound in water (Everyday Physics)
+        AwakeningFact(
+            id = 4,
+            prompt = Line(
+                // "Paani ke andar aawaaz hawa ke mukaable chaar guna zyada tezi se safar karti hai."
+                "पानी के अंदर आवाज़ हवा के मुकाबले चार गुना ज़्यादा तेज़ी से सफ़र करती है।",
+                "Sound travels more than four times faster through water than through air."
+            )
+        ),
+        // Fact 5: Brain electrical power (Human Brain)
+        AwakeningFact(
+            id = 5,
+            prompt = Line(
+                // "Jaagte samay aapka dimaag 12 se 25 watt bijli paida karta hai — ek chhote LED bulb ke barabar."
+                "जागते समय आपका दिमाग 12 से 25 वॉट बिजली पैदा करता है — एक छोटे एलईडी बल्ब के बराबर।",
+                "While awake, your brain produces 12 to 25 watts of electricity — enough to power a small LED bulb."
+            )
+        ),
+        // Fact 6: Venus rotation (Space)
+        AwakeningFact(
+            id = 6,
+            prompt = Line(
+                // "Shukra grah par ek din uske poore ek saal se bhi lamba hota hai."
+                "शुक्र ग्रह पर एक दिन उसके पूरे एक साल से भी लंबा होता है।",
+                "A single day on Venus is longer than its entire year."
+            )
+        ),
+        // Fact 7: Blue whale heartbeat (Nature / Biology)
+        AwakeningFact(
+            id = 7,
+            prompt = Line(
+                // "Blue whale ka dil ek chhoti car jitna bada hota hai, aur uski dhadkan 3 kilometer door tak suni ja sakti hai."
+                "ब्लू व्हेल का दिल एक छोटी कार जितना बड़ा होता है, और उसकी धड़कन 3 किलोमीटर दूर तक सुनी जा सकती है।",
+                "A blue whale's heart is the size of a small car, and its beat can be heard 3 kilometers away."
+            )
+        ),
+        // Fact 8: Pure honey preservation (Everyday Phenomena / Chemistry)
+        AwakeningFact(
+            id = 8,
+            prompt = Line(
+                // "Shuddh shahad kabhi kharab nahi hota. Hazaaron saal puraana shahad bhi bilkul theek rehta hai."
+                "शुद्ध शहद कभी खराब नहीं होता। हज़ारों साल पुराना शहद भी बिल्कुल ठीक रहता है।",
+                "Pure honey never spoils. Honey preserved for thousands of years remains completely edible."
+            )
+        ),
+        // Fact 9: Blinking resets visual cortex (Human Body / Focus)
+        AwakeningFact(
+            id = 9,
+            prompt = Line(
+                // "Palak jhapkaane se dimaag visual cortex ko reset karta hai taaki dhyan bana rahe."
+                "पलक झपकाने से दिमाग विजुअल कॉर्टेक्स को रीसेट करता है ताकि ध्यान बना रहे।",
+                "Every time you blink, your brain briefly resets your visual cortex to keep your focus sharp."
+            )
+        ),
+        // Fact 10: Earth trees vs galaxy stars (Earth / Nature)
+        AwakeningFact(
+            id = 10,
+            prompt = Line(
+                // "Prithvi par kareeb 3 lakh crore ped hain, jo aakashganga ke taaron se bhi zyada hain."
+                "पृथ्वी पर करीब 3 लाख करोड़ पेड़ हैं, जो आकाशगंगा के तारों से भी ज़्यादा हैं।",
+                "There are roughly 3 trillion trees on Earth, outnumbering stars in the Milky Way."
+            )
+        ),
+        // Fact 11: Moon footprints (Space)
+        AwakeningFact(
+            id = 11,
+            prompt = Line(
+                // "Chaand par hawa aur paani na hone se antariksh yaatriyon ke kadmon ke nishaan laakhon saal rahenge."
+                "चाँद पर हवा और पानी न होने से अंतरिक्ष यात्रियों के कदमों के निशान लाखों साल रहेंगे।",
+                "With no wind or water on the Moon, astronaut footprints will stay for millions of years."
+            )
+        ),
+        // Fact 12: Octopus anatomy (Nature / Marine Biology)
+        AwakeningFact(
+            id = 12,
+            prompt = Line(
+                // "Octopus ke paas 3 dil aur 9 dimaag hote hain, aur uska khoon neele rang ka hota hai."
+                "ऑक्टोपस के पास 3 दिल और 9 दिमाग होते हैं, और उसका खून नीले रंग का होता है।",
+                "An octopus has 3 hearts and 9 brains, and its blood is naturally blue."
+            )
+        )
+    )
+
+    // Legacy reference mapped to awakening facts for compatibility
+    val MATH_QUESTIONS = AWAKENING_FACTS.map {
+        MathItem(it.id, it.prompt, 70, it.maxWaitMs)
+    }
 
     // Short acknowledgements after a companion answer (spoken, not safety path)
     // "Shabaash! Dhyan se chalate raho."

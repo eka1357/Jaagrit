@@ -173,12 +173,17 @@
     <string name="settings_contact_desc">If you become unresponsive during driving (after alarm and family voice), Jaagrit sends an emergency SMS with your last known GPS coordinates to this phone number.</string>
     <string name="settings_driver_name_label">Driver Name</string>
     <string name="settings_phone_label">Emergency Phone Number</string>
+    <string name="settings_phone_label_n">Emergency Contact %1$d</string>
+    <string name="settings_phone_label_optional">Emergency Contact %1$d (Optional)</string>
+    <string name="settings_phone_error_invalid">Please enter a valid phone number (7-15 digits)</string>
+    <string name="settings_phone_error_duplicate">This contact number is already added</string>
     <string name="settings_masked_label">Active Masked Number:</string>
     <string name="settings_btn_save_contact">Save Emergency Contact</string>
     <string name="settings_contact_saved">Emergency contact saved locally.</string>
     <string name="settings_demo_flags">Demo &amp; Testing Flags</string>
     <string name="settings_demo_timers_desc">Shortens escalation: family voice in 5s (vs 10s), SMS in 8s (vs 20s).</string>
     <string name="settings_quick_calib_desc">Fast demo calibration: open eyes 5s, closed eyes 2s.</string>
+    <string name="settings_companion_desc">L1/L2 spoken openers, math questions, and cognitive response tracking.</string>
     <string name="settings_privacy_title">Privacy Guarantee</string>
     <string name="settings_privacy_bullets">• 100% Offline: The app contains no INTERNET permission.\n• Zero Media Retention: Camera frames and mic audio are never saved to storage.\n• Numerical Telemetry Only: Only mathematical metrics (EAR, pitch, timestamps) are computed in memory.\n• Local Persistence: Driver baseline is saved securely in local Android DataStore.</string>
 

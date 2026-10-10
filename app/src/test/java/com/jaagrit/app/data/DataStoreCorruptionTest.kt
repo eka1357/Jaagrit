@@ -43,12 +43,14 @@ class DataStoreCorruptionTest {
         val language = empty[SettingsStore.KEY_APP_LANGUAGE] ?: SettingsStore.DEFAULT_LANGUAGE
         val demoTimers = empty[SettingsStore.KEY_DEMO_TIMERS] ?: false
         val quickCal = empty[SettingsStore.KEY_QUICK_CALIBRATION] ?: false
+        val companionEnabled = empty[SettingsStore.KEY_COMPANION_ENABLED] ?: false
         val contact = empty[SettingsStore.KEY_EMERGENCY_CONTACT] ?: ""
 
         assertEquals(SettingsStore.DEFAULT_DRIVER_NAME, driverName)
         assertEquals(SettingsStore.DEFAULT_LANGUAGE, language)
         assertEquals(false, demoTimers)
         assertEquals(false, quickCal)
+        assertEquals(false, companionEnabled)
         assertEquals("", contact)
     }
 

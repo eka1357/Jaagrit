@@ -940,6 +940,25 @@ private fun ActiveMonitoringContent(
                                     Text(text = if (uiState.quickCalibration) "Disable" else "Enable", fontSize = 11.sp)
                                 }
                             }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "COMPANION: ${if (uiState.companionEnabled) "ON" else "OFF"}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (uiState.companionEnabled) Color(0xFF388E3C) else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Button(
+                                    onClick = { pipeline.toggleCompanion() },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Text(text = if (uiState.companionEnabled) "Disable" else "Enable", fontSize = 11.sp)
+                                }
+                            }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(text = "False Alerts (10m): ${uiState.falseAlertCount}", fontSize = 12.sp)
                                 Text(text = "L5 Countdown: ${uiState.l5CountdownSeconds?.let { "${it}s" } ?: "N/A"}", fontSize = 12.sp)
