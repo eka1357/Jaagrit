@@ -34,8 +34,11 @@ class FatigueEngine(
     private var isFirstScoreSample: Boolean = true
 
     // Eye closure tracking
+    private val eyeFilter = EyeStateFilter(config, baseline)
     private var closureStartTimeMs: Long? = null
     private var lastClosedFrameTimeMs: Long? = null
+    // First open frame of a reopen not yet confirmed (D18): the closure stays open until eyeReopenConfirmMs
+    private var reopenStartTimeMs: Long? = null
     private val recentClosures = ArrayDeque<Pair<Long, Long>>() // (closureEndTimeMs, durationMs)
 
     // Glitch & Face lost tracking
@@ -58,6 +61,16 @@ class FatigueEngine(
     // Head droop tracking
     private var headDroopStartTimeMs: Long? = null
 
+    // Yawn tracking (D18)
+    private val yawnThreshold: Float = maxOf(
+        config.yawnMinMar,
+        baseline.mar + config.yawnThresholdFactor * (baseline.yawnMar - baseline.mar)
+    )
+    private var mouthOpenStartMs: Long? = null
+    private var lastMouthOpenMs: Long? = null
+    private var yawnCountedForOpening: Boolean = false
+    private val recentYawns = ArrayDeque<Long>()
+
     val isAlertActive: Boolean
         get() = ladder.isAlertActive
 
@@ -77,17 +90,19 @@ class FatigueEngine(
         faceLostStartTimeMs = null
         hasSpokenFaceLostReminder = false
 
-        // 3. Eye Closure Detection (ENG-1)
-        val isClosed = f.earAvg < baseline.threshold
+        // 3. Eye Closure Detection (ENG-1). isClosed has reopen hysteresis; closure timing adds reopen confirmation (D18)
+        val isClosed = eyeFilter.update(f.earAvg)
         val currentClosureDuration = processEyeClosure(isClosed, now)
         trackBlinkBaseline(now)
 
         // 4. Update sliding window for PERCLOS
         slidingWindow.addLast(EarSample(now, isClosed))
+        processYawn(f.mar, now)
         pruneOldSamples(now)
 
-        // 5. Update Head Droop tracking (D3)
-        val droopDurationMs = processHeadDroop(f.pitchDeg, now)
+        // 5. Update Head Droop tracking (D3), relative to the calibrated neutral pitch (D18)
+        val relPitch = f.pitchDeg - baseline.neutralPitchDeg
+        val droopDurationMs = processHeadDroop(relPitch, now)
 
         // 6. Compute Heuristic Alertness Penalties (D1)
         val reasons = mutableListOf<String>()
@@ -118,7 +133,14 @@ class FatigueEngine(
         // 6d. Head droop penalty (0 to 20 points)
         val headDroopPenalty = computeHeadDroopPenalty(droopDurationMs)
         if (headDroopPenalty > config.reasonPenaltyThreshold) {
-            reasons.add("Head droop detected (${f.pitchDeg.toInt()}°)")
+            reasons.add("Head droop detected (${relPitch.toInt()}°)")
+        }
+
+        // 6e'. Yawn frequency penalty (0 to 15 points, D18)
+        val yawnCount = yawnCount(now)
+        val yawnPenalty = minOf(yawnCount * config.yawnPenaltyPer, config.alertnessWeightYawn)
+        if (yawnPenalty > config.reasonPenaltyThreshold) {
+            reasons.add("Yawning ($yawnCount in ${config.yawnWindowMs / Config.MS_PER_MINUTE.toLong()} min)")
         }
 
         // 6e. Drive time penalty ramp (0 to 15 points, 2h..6h ramp)
@@ -129,7 +151,7 @@ class FatigueEngine(
         }
 
         // 7. Calculate smoothed alertness score (EMA smoothing alpha = 0.15)
-        val totalPenalty = perclosPenalty + closurePenalty + blinkPenalty + headDroopPenalty + driveTimePenalty
+        val totalPenalty = perclosPenalty + closurePenalty + blinkPenalty + headDroopPenalty + yawnPenalty + driveTimePenalty
         val rawScore = (100.0 - totalPenalty).coerceIn(0.0, 100.0)
 
         if (isFirstScoreSample) {
@@ -150,7 +172,7 @@ class FatigueEngine(
             faceFound = true,
             isEyesClosed = isClosed,
             closureDurationMs = currentClosureDuration,
-            pitchDeg = f.pitchDeg,
+            pitchDeg = relPitch,
             now = now
         )
 
@@ -158,6 +180,8 @@ class FatigueEngine(
         if (ladderActions.any { it is Action.Log && it.detail.contains("Response processed") }) {
             closureStartTimeMs = null
             lastClosedFrameTimeMs = null
+            reopenStartTimeMs = null
+            eyeFilter.reset()
             recentClosures.clear()
             slidingWindow.clear()
             smoothedAlertness = 100.0
@@ -210,7 +234,9 @@ class FatigueEngine(
             metrics = EngineMetrics(
                 perclos = perclos,
                 blinkRatePerMin = currentBlinkRatePerMin(now),
-                blinkBaselinePerMin = blinkBaselineRate
+                blinkBaselinePerMin = blinkBaselineRate,
+                relPitchDeg = relPitch,
+                yawnCount = yawnCount
             ),
             companion = if (config.companionEnabled) companion.status(now) else null
         )
@@ -247,7 +273,7 @@ class FatigueEngine(
         // Tick ladder timers
         actions.addAll(ladder.onTick(now, faceFound = true))
 
-        val currentClosureDuration = closureStartTimeMs?.let { now - it } ?: 0L
+        val currentClosureDuration = ongoingClosureMs(now)
         val rawTriggerLevel = computeRawTriggerLevel(now, currentClosureDuration)
         val scoreBandLevel = currentScoreBandLevel()
 
@@ -318,6 +344,8 @@ class FatigueEngine(
             actions.addAll(ladder.processResponse(now, "Answer: ${e.text}"))
             closureStartTimeMs = null
             lastClosedFrameTimeMs = null
+            reopenStartTimeMs = null
+            eyeFilter.reset()
             recentClosures.clear()
             slidingWindow.clear()
             smoothedAlertness = 100.0
@@ -327,6 +355,8 @@ class FatigueEngine(
             actions.addAll(ladder.processResponse(now, e.toString()))
             closureStartTimeMs = null
             lastClosedFrameTimeMs = null
+            reopenStartTimeMs = null
+            eyeFilter.reset()
             recentClosures.clear()
             slidingWindow.clear()
             smoothedAlertness = 100.0
@@ -372,6 +402,8 @@ class FatigueEngine(
         isFirstScoreSample = true
         closureStartTimeMs = null
         lastClosedFrameTimeMs = null
+        reopenStartTimeMs = null
+        eyeFilter.reset()
         recentClosures.clear()
         faceLostStartTimeMs = null
         hasSpokenFaceLostReminder = false
@@ -382,6 +414,10 @@ class FatigueEngine(
         effectiveBlinkBaseline = null
         blinkElevatedSinceMs = null
         headDroopStartTimeMs = null
+        mouthOpenStartMs = null
+        lastMouthOpenMs = null
+        yawnCountedForOpening = false
+        recentYawns.clear()
         companion.reset(startTimeMs)
         ladder.reset(startTimeMs)
     }
@@ -404,6 +440,13 @@ class FatigueEngine(
             hasSpokenFaceLostReminder = false
         }
 
+        // Eyes had already reopened before the face was lost: that closure really ended, so record it
+        val start = closureStartTimeMs
+        val reopenAt = reopenStartTimeMs
+        if (start != null && reopenAt != null) {
+            endClosure(start, reopenAt)
+        }
+
         // Glitch tolerance check: if face loss exceeds 300ms, cancel in-progress closure
         if (closureStartTimeMs != null) {
             val lastClosed = lastClosedFrameTimeMs ?: now
@@ -413,6 +456,9 @@ class FatigueEngine(
                 lastClosedFrameTimeMs = null
             }
         }
+        if (closureStartTimeMs == null) eyeFilter.reset()
+        mouthOpenStartMs = null
+        lastMouthOpenMs = null
 
         val lostDuration = now - faceLostStartTimeMs!!
         val actions = mutableListOf<Action>()
@@ -436,26 +482,68 @@ class FatigueEngine(
     }
 
     private fun processEyeClosure(isClosed: Boolean, now: Long): Long {
-        return if (isClosed) {
+        if (isClosed) {
             if (closureStartTimeMs == null) {
                 closureStartTimeMs = now
             }
+            // An open blip shorter than the confirm window was landmark noise: the closure continues (D18)
+            reopenStartTimeMs = null
             lastClosedFrameTimeMs = now
-            now - closureStartTimeMs!!
-        } else {
-            if (closureStartTimeMs != null) {
-                val duration = now - closureStartTimeMs!!
-                // If duration in blink range [blinkDurationMinMs..blinkDurationMaxMs], record as a blink
-                if (duration in config.blinkDurationMinMs..config.blinkDurationMaxMs) {
-                    recentBlinks.addLast(now)
-                }
-                recentClosures.addLast(now to duration)
-                closureStartTimeMs = null
-                lastClosedFrameTimeMs = null
+            return now - closureStartTimeMs!!
+        }
+        val start = closureStartTimeMs ?: return 0L
+        val reopenAt = reopenStartTimeMs ?: now.also { reopenStartTimeMs = it }
+        if (now - reopenAt < config.eyeReopenConfirmMs) {
+            // Reopen not confirmed yet: keep the closure, duration frozen at the first open frame
+            return reopenAt - start
+        }
+        endClosure(start, reopenAt)
+        return 0L
+    }
+
+    /** Records a finished closure that ended at the first open frame [endMs] of a confirmed reopen. */
+    private fun endClosure(startMs: Long, endMs: Long) {
+        val duration = endMs - startMs
+        // If duration in blink range [blinkDurationMinMs..blinkDurationMaxMs], record as a blink
+        if (duration in config.blinkDurationMinMs..config.blinkDurationMaxMs) {
+            recentBlinks.addLast(endMs)
+        }
+        recentClosures.addLast(endMs to duration)
+        closureStartTimeMs = null
+        lastClosedFrameTimeMs = null
+        reopenStartTimeMs = null
+    }
+
+    /** In-progress closure length at [now]; frozen at the first open frame while a reopen is unconfirmed. */
+    private fun ongoingClosureMs(now: Long): Long {
+        val start = closureStartTimeMs ?: return 0L
+        return (reopenStartTimeMs ?: now) - start
+    }
+
+    // --- Yawn detection (D18) ---
+
+    /** Counts one yawn per mouth opening held above [yawnThreshold] for yawnMinMs, tolerating brief dips. */
+    private fun processYawn(mar: Float, now: Long) {
+        if (mar > yawnThreshold) {
+            if (mouthOpenStartMs == null) {
+                mouthOpenStartMs = now
+                yawnCountedForOpening = false
             }
-            0L
+            lastMouthOpenMs = now
+            if (!yawnCountedForOpening && now - mouthOpenStartMs!! >= config.yawnMinMs) {
+                yawnCountedForOpening = true
+                recentYawns.addLast(now)
+            }
+        } else {
+            val lastOpen = lastMouthOpenMs
+            if (lastOpen != null && now - lastOpen > config.yawnDipToleranceMs) {
+                mouthOpenStartMs = null
+                lastMouthOpenMs = null
+            }
         }
     }
+
+    private fun yawnCount(now: Long): Int = recentYawns.count { now - it < config.yawnWindowMs }
 
     private fun processHeadDroop(pitchDeg: Float, now: Long): Long {
         return if (pitchDeg > config.headPitchDeg) {
@@ -480,6 +568,9 @@ class FatigueEngine(
         while (recentBlinks.isNotEmpty() && recentBlinks.first() < cutoff) {
             recentBlinks.removeFirst()
         }
+        while (recentYawns.isNotEmpty() && now - recentYawns.first() >= config.yawnWindowMs) {
+            recentYawns.removeFirst()
+        }
     }
 
     private fun computeRawTriggerLevel(now: Long, closureDuration: Long): Level {
@@ -489,6 +580,7 @@ class FatigueEngine(
             closureDuration >= config.closureConfirmMs -> Level.L3
             perclos >= config.perclosL2 -> Level.L2
             config.blinkSignalEnabled && blinkSustained -> Level.L1
+            yawnCount(now) >= config.yawnL1Count -> Level.L1
             else -> Level.L0
         }
     }

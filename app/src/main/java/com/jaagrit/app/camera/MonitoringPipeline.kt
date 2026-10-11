@@ -89,7 +89,9 @@ data class MonitoringUiState(
     val phoneTemperatureC: Float = 0f,
     val isThermalThrottling: Boolean = false,
     val isLowLight: Boolean = false,
-    val cameraError: String? = null
+    val cameraError: String? = null,
+    // Debug panel only (AGENTS.md Rule 7)
+    val metrics: com.jaagrit.app.engine.EngineMetrics? = null
 ) {
     val isAlert: Boolean
         get() = level >= Level.L3 || isRedFlashActive
@@ -550,7 +552,8 @@ class MonitoringPipeline(
                 companion = output.companion,
                 phoneTemperatureC = thermal.temperatureCelsius,
                 isThermalThrottling = thermal.isThrottling,
-                isLowLight = visionResult?.isLowLight ?: current.isLowLight
+                isLowLight = visionResult?.isLowLight ?: current.isLowLight,
+                metrics = output.metrics ?: current.metrics
             )
         }
     }

@@ -18,8 +18,10 @@ Score starts at 100 and subtracts weighted penalties from five signals:
    - Compared against the calibrated baseline blink rate.
    - 0 penalty up to baseline; ramps to 15 points at +20% increase (L1 trigger boundary), up to 25 points at +50% increase.
 4. **Head droop:**
-   - Sustained pitch above threshold (15° for ≥ 1.5 s) contributes up to 20 points penalty.
-5. **Drive-time penalty:**
+   - Sustained pitch above threshold (15° relative to the calibrated neutral pitch, for ≥ 1.5 s) contributes up to 20 points penalty (D18).
+5. **Yawn frequency (M13, D18):**
+   - 7.5 points per yawn in the last 5 min, capped at 15 points (`YAWN_PENALTY_PER`, `ALERTNESS_WEIGHT_YAWN`).
+6. **Drive-time penalty:**
    - **Formula:** 0 points penalty from 0 to 2 hours of driving.
    - Ramps linearly from 0 at 2 h to a maximum of 15 points at 6 h: `penalty = 15.0 * (driveHours - 2.0) / 4.0`.
    - Capped at 15 points for drive time ≥ 6 h.
@@ -39,7 +41,8 @@ Score starts at 100 and subtracts weighted penalties from five signals:
   - Blink rate: max 25 points (`ALERTNESS_WEIGHT_BLINK_RATE = 25.0`)
   - Head droop: max 20 points (`ALERTNESS_WEIGHT_HEAD_DROOP = 20.0`)
   - Drive time: max 15 points (`DRIVE_TIME_MAX_PENALTY = 15.0`)
-  - Combined theoretical penalty = 135 points (score clamped to [0, 100]).
+  - Yawn frequency (M13): max 15 points (`ALERTNESS_WEIGHT_YAWN = 15.0`)
+  - Combined theoretical penalty = 150 points (score clamped to [0, 100]).
 - Engine produces a deterministic `reasons: List<String>` from the contributing penalties (e.g. "PERCLOS high (14%)", "Blink rate +25% vs baseline", "Drive time > 4h").
 - Unit-tested with scripted frame sequences.
 
@@ -63,7 +66,7 @@ Score starts at 100 and subtracts weighted penalties from five signals:
 - MediaPipe `FaceLandmarker` facial transformation matrix used first (`output_facial_transformation_matrixes = true`). Show pitch/yaw/roll in debug panel.
 - **Convention:** positive pitch = head down (nodding forward / droop).
 - Landmark-based geometric estimate serves as fallback if matrix is unreliable. Document choice in `docs/MEASUREMENTS.md`.
-- Soft prompt fires when pitch > 15° sustained for ≥ 1.5 s (`HEAD_SUSTAIN_MS = 1500`), with 30 s cooldown (`SOFT_PROMPT_COOLDOWN_MS = 30000`).
+- Soft prompt fires when pitch > 15° (relative to calibrated neutral since M13, D18) sustained for ≥ 1.5 s (`HEAD_SUSTAIN_MS = 1500`), with 30 s cooldown (`SOFT_PROMPT_COOLDOWN_MS = 30000`).
 - **Cancellation:** For the head-droop path only, pitch returning below the threshold (< 15°) continuously for 1.5 s (`HEAD_RESTORE_CANCEL_MS = 1500`) cancels the pending escalation to L3.
 - The eyes-closed path is independent (pitch returning does not cancel eye-closure alarms).
 
@@ -140,7 +143,7 @@ Score starts at 100 and subtracts weighted penalties from five signals:
   `Level = max(rawTriggerLevel, scoreBandLevel)`.
 - **Raw triggers:**
   - **L0:** Normal driving.
-  - **L1:** Blink rate +20% vs baseline sustained for 30 s (`BLINK_RATE_L1_SUSTAIN_MS = 30000`).
+  - **L1:** Blink rate +20% vs baseline sustained for 30 s (`BLINK_RATE_L1_SUSTAIN_MS = 30000`), OR ≥ 2 yawns within 5 min (`YAWN_L1_COUNT = 2`, `YAWN_WINDOW_MS = 300000`, D18).
   - **L2:** PERCLOS ≥ 0.12 over 60 s window (`PERCLOS_L2 = 0.12`, `PERCLOS_WINDOW_MS = 60000`).
   - **L3:** Eyes closed ≥ 2.5 s (`CLOSURE_CONFIRM_MS = 2500`) OR head drooped with no response to soft prompt within 5 s (`HEAD_NO_RESPONSE_MS = 5000`).
   - **L4:** 10 s after L3 with no response and face detected (`L4_AFTER_L3_MS = 10000`).
@@ -213,4 +216,20 @@ Full milestone sequence: M0, M1, M2, M3, M4a, M4b, M5, M6, M7, M8, M9a, M9b1, M9
   The loud alarm siren and spoken prompt would be picked up by the microphone and garble or cause false speech recognition.
   Therefore, a voice reply must not count as an alert response in this milestone.
 - **TODO (M9+):** Evaluate Acoustic Echo Cancellation (AEC) or silence-first listening windows if voice dismissal of L3 alarms is desired. In M8, the "I'M AWAKE" button remains the sole deterministic dismissal path for active alerts.
+
+---
+
+## D18 — Detection accuracy pass (M13)
+
+- **Calibration clock:** phase starts use `SystemClock.elapsedRealtime()`, the same clock as `FaceFrame.tsMs`. They previously used `uptimeMillis()`, so the 1 s reaction-time skip (D4) never removed any frames.
+- **Relative head pitch:** calibration stores `neutralPitchDeg` (median pitch over the look-normal phase). The engine and ladder compare `pitch − neutralPitchDeg` against `HEAD_PITCH_DEG = 15°`. The dashboard mount alone reads about 7–9°, so the old absolute check fired on a nod of about 7°. Older saved baselines load with neutral = 0°, which is the pre-M13 behavior.
+- **Eye-state filter (`EyeStateFilter`):** closing still uses the protected `ear < threshold`. Reopening needs `ear > threshold + 0.10 × earGap` (`EAR_HYSTERESIS_FRACTION`).
+- **Reopen confirmation:** a closure ends only after the eyes stay open for `EYE_REOPEN_CONFIRM_MS = 100`. Its duration is measured to the first open frame. One noisy open frame therefore can't reset a microsleep timer, and blink and closure lengths are not inflated.
+- **Which state feeds what:** closure duration, blinks, and the L3 trigger use the confirmed closure. PERCLOS, the ladder's 3 s eyes-open response, and the companion use the instantaneous (hysteresis) state. This keeps the protected timing in `EyeTrackingProtectionTest` unchanged and keeps PERCLOS from being inflated by the confirmation window.
+- **Median filter rejected:** a per-eye median-of-3 was considered and dropped. It delays closure onset by one frame (which would break the pinned onset timing), and the reopen confirmation already handles the spike case.
+- **Yawn signal:**
+  - Calibration: `yawnMar` = median of the top quartile of yawn-phase MAR (the phase is mostly a closed mouth). It falls back to `DEFAULT_BASELINE_YAWN_MAR = 0.60` when the step was skipped or the yawn was less than 0.15 above neutral.
+  - Threshold: `max(0.30, neutralMar + 0.6 × (yawnMar − neutralMar))`.
+  - Detection: one yawn per mouth opening held ≥ 1.5 s, tolerating dips ≤ 100 ms. Syllable gaps in fast speech (about 125 ms or more) reset the hold, so talking doesn't count.
+  - Effect: ≥ 2 yawns in 5 min → raw L1 (companion only, never the safety path). Yawns are not cleared by an awake response, because they are a slow trend.
 

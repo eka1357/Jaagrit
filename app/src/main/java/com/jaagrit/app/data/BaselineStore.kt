@@ -12,6 +12,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.emptyPreferences
 import com.jaagrit.app.engine.Baseline
+import com.jaagrit.app.engine.Config
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -55,6 +56,9 @@ class BaselineStore(private val context: Context) {
             val blinkRate = prefs[KEY_BLINK_RATE] ?: 16.0f
             val latency = prefs[KEY_RESPONSE_LATENCY_MS] ?: 1500L
             val isValid = prefs[KEY_IS_VALID] ?: true
+            // Added in M13 without a schema bump: older baselines load with the pre-M13 behavior
+            val neutralPitch = prefs[KEY_NEUTRAL_PITCH] ?: 0f
+            val yawnMar = prefs[KEY_YAWN_MAR] ?: Config.DEFAULT_BASELINE_YAWN_MAR
 
             Baseline(
                 openEar = openEar,
@@ -64,7 +68,9 @@ class BaselineStore(private val context: Context) {
                 blinkRate = blinkRate,
                 responseLatencyMs = latency,
                 calibratedAtMs = calibratedAt,
-                isValid = isValid
+                isValid = isValid,
+                neutralPitchDeg = neutralPitch,
+                yawnMar = yawnMar
             )
         }
 
@@ -91,6 +97,8 @@ class BaselineStore(private val context: Context) {
             prefs[KEY_RESPONSE_LATENCY_MS] = baseline.responseLatencyMs
             prefs[KEY_CALIBRATED_AT_MS] = baseline.calibratedAtMs
             prefs[KEY_IS_VALID] = baseline.isValid
+            prefs[KEY_NEUTRAL_PITCH] = baseline.neutralPitchDeg
+            prefs[KEY_YAWN_MAR] = baseline.yawnMar
         }
     }
 
@@ -105,6 +113,8 @@ class BaselineStore(private val context: Context) {
             prefs.remove(KEY_RESPONSE_LATENCY_MS)
             prefs.remove(KEY_CALIBRATED_AT_MS)
             prefs.remove(KEY_IS_VALID)
+            prefs.remove(KEY_NEUTRAL_PITCH)
+            prefs.remove(KEY_YAWN_MAR)
         }
     }
 
@@ -119,5 +129,7 @@ class BaselineStore(private val context: Context) {
         val KEY_RESPONSE_LATENCY_MS = longPreferencesKey("baseline_response_latency_ms")
         val KEY_CALIBRATED_AT_MS = longPreferencesKey("baseline_calibrated_at_ms")
         val KEY_IS_VALID = booleanPreferencesKey("baseline_is_valid")
+        val KEY_NEUTRAL_PITCH = floatPreferencesKey("baseline_neutral_pitch_deg")
+        val KEY_YAWN_MAR = floatPreferencesKey("baseline_yawn_mar")
     }
 }

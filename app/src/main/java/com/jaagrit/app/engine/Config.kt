@@ -157,7 +157,23 @@ data class Config(
     val blinkRateClampMax: Float = BLINK_RATE_CLAMP_MAX,
 
     // Facial landmark geometric pitch scaling factor (AUDIT-013)
-    val headPitchGeometricScale: Float = HEAD_PITCH_GEOMETRIC_SCALE
+    val headPitchGeometricScale: Float = HEAD_PITCH_GEOMETRIC_SCALE,
+
+    // Eye-state filtering (D18): reopen hysteresis and reopen confirmation
+    val earHysteresisFraction: Float = EAR_HYSTERESIS_FRACTION,
+    val eyeReopenConfirmMs: Long = EYE_REOPEN_CONFIRM_MS,
+
+    // Yawn signal (D18): calibration, detection, scoring, raw L1 trigger
+    val defaultBaselineYawnMar: Float = DEFAULT_BASELINE_YAWN_MAR,
+    val yawnMinCalGap: Float = YAWN_MIN_CAL_GAP,
+    val yawnThresholdFactor: Float = YAWN_THRESHOLD_FACTOR,
+    val yawnMinMar: Float = YAWN_MIN_MAR,
+    val yawnMinMs: Long = YAWN_MIN_MS,
+    val yawnDipToleranceMs: Long = YAWN_DIP_TOLERANCE_MS,
+    val yawnWindowMs: Long = YAWN_WINDOW_MS,
+    val yawnL1Count: Int = YAWN_L1_COUNT,
+    val yawnPenaltyPer: Double = YAWN_PENALTY_PER,
+    val alertnessWeightYawn: Double = ALERTNESS_WEIGHT_YAWN
 ) {
     // Dynamic timer properties derived from demoTimers and quickCalibration flags (D9)
     val l4AfterL3Ms: Long
@@ -186,7 +202,8 @@ data class Config(
         const val L5_AFTER_L4_DEMO_MS = 8000L
         const val L3_REPEAT_COOLDOWN_MS = 30000L
 
-        // Head pitch (degrees, positive = head down)
+        // Head pitch (degrees, positive = head down), relative to the calibrated neutral pitch (D18).
+        // The dashboard mount alone reads ~7-9° (MEASUREMENTS.md), so an absolute 15° fired on a ~7° nod.
         const val HEAD_PITCH_DEG = 15.0f
         const val HEAD_SUSTAIN_MS = 1500L
         const val HEAD_NO_RESPONSE_MS = 5000L
@@ -292,6 +309,32 @@ data class Config(
 
         // Empirical multiplier scaling facial landmark geometric depth ratio to degrees
         const val HEAD_PITCH_GEOMETRIC_SCALE = 1.5f
+
+        // --- Eye-state filtering (D18) ---
+        // Reopen needs EAR above threshold + 10% of the open/closed gap (~0.026 EAR) so near-threshold noise can't flicker
+        const val EAR_HYSTERESIS_FRACTION = 0.10f
+        // ~2-3 frames of open eyes before a closure ends, so one noisy frame can't reset a microsleep timer
+        const val EYE_REOPEN_CONFIRM_MS = 100L
+
+        // --- Yawn signal (D18) ---
+        // Uncalibrated yawn MAR: fixture yawn ~0.63 vs normal ~0.04 (AUDIT_M0_M5)
+        const val DEFAULT_BASELINE_YAWN_MAR = 0.60f
+        // A calibration yawn less than 0.15 above the neutral mouth means the driver didn't really yawn
+        const val YAWN_MIN_CAL_GAP = 0.15f
+        // Yawn threshold sits 60% of the way from neutral to the calibrated yawn: wide openings only
+        const val YAWN_THRESHOLD_FACTOR = 0.6f
+        // Absolute floor above typical talking MAR (~0.1-0.3) so speech never counts
+        const val YAWN_MIN_MAR = 0.30f
+        // Yawns hold 2-6 s; speech openings last a fraction of a second
+        const val YAWN_MIN_MS = 1500L
+        // Dips up to 100 ms (1-2 jittery frames at ~25 fps) don't end a yawn; syllable gaps in speech (~125 ms+) do
+        const val YAWN_DIP_TOLERANCE_MS = 100L
+        // 2+ yawns within 5 min is an early-fatigue cue -> raw L1 (companion only, never the safety path)
+        const val YAWN_WINDOW_MS = 300_000L
+        const val YAWN_L1_COUNT = 2
+        // 7.5 pts per yawn, capped at 15: yawns alone never pull the score below Caution
+        const val YAWN_PENALTY_PER = 7.5
+        const val ALERTNESS_WEIGHT_YAWN = 15.0
 
         // Alertness score weights & EMA (ENG-2, DECISIONS D1)
         // Weight rationale:

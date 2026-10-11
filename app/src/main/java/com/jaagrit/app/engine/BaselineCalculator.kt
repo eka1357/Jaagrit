@@ -77,6 +77,10 @@ object BaselineCalculator {
         }
         val validClosedFrames = if (filteredClosed.isNotEmpty()) filteredClosed else closedEyeFrames.filter { it.faceFound }
 
+        val filteredYawn = yawnFrames.filter {
+            it.faceFound && (it.tsMs - yawnPhaseStartMs >= config.calibrationIgnoreInitialMs)
+        }
+
         val openEarValues = validOpenFrames.map { it.earAvg }
         val closedEarValues = validClosedFrames.map { it.earAvg }
         val neutralMarValues = validOpenFrames.map { it.mar }
@@ -85,6 +89,8 @@ object BaselineCalculator {
         val openMedian = medianFloat(openEarValues)
         val closedMedian = medianFloat(closedEarValues)
         val neutralMarMedian = medianFloat(neutralMarValues)
+        val neutralPitch = medianFloat(validOpenFrames.map { it.pitchDeg })
+        val yawnMar = computeYawnMar(filteredYawn.map { it.mar }, neutralMarMedian, config)
 
         // Threshold formula: closedMedian + factor * (openMedian - closedMedian)
         val gap = openMedian - closedMedian
@@ -108,8 +114,23 @@ object BaselineCalculator {
             blinkRate = blinkRate,
             responseLatencyMs = finalLatency,
             calibratedAtMs = calibratedAtMs,
-            isValid = isValid
+            isValid = isValid,
+            neutralPitchDeg = neutralPitch,
+            yawnMar = yawnMar
         )
+    }
+
+    /**
+     * Yawn MAR = median of the top quarter of yawn-phase MAR values (D18). The 5 s phase is mostly a
+     * closed mouth, so a plain median would miss the yawn; the top-quartile median is a robust peak.
+     * Falls back to the default when the step was skipped or the driver didn't really yawn.
+     */
+    fun computeYawnMar(yawnMarValues: List<Float>, neutralMar: Float, config: Config = Config.DEFAULT): Float {
+        if (yawnMarValues.isEmpty()) return config.defaultBaselineYawnMar
+        val sorted = yawnMarValues.sorted()
+        val topQuarter = sorted.subList(sorted.size * 3 / 4, sorted.size)
+        val peak = medianFloat(topQuarter)
+        return if (peak - neutralMar >= config.yawnMinCalGap) peak else config.defaultBaselineYawnMar
     }
 
     /**

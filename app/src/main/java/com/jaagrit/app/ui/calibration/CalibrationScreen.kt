@@ -146,7 +146,7 @@ fun CalibrationScreen(
     // Calibration state
     var currentStep by remember { mutableStateOf(CalibrationStep.LOOK_NORMAL) }
     var countdownSeconds by remember(activeConfig) { mutableIntStateOf((activeConfig.calibrationOpenMs / 1000L).toInt()) }
-    var phaseStartMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var phaseStartMs by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
 
     // Sample storage
     val openFrames = remember { mutableStateListOf<FaceFrame>() }
@@ -180,7 +180,8 @@ fun CalibrationScreen(
 
     // Timer coroutine for the active step
     LaunchedEffect(currentStep) {
-        phaseStartMs = SystemClock.uptimeMillis()
+        // Same clock as FaceFrame.tsMs (elapsedRealtime), so the 1 s reaction-time skip actually applies (D18)
+        phaseStartMs = SystemClock.elapsedRealtime()
 
         when (currentStep) {
             CalibrationStep.LOOK_NORMAL -> {

@@ -902,6 +902,10 @@ private fun ActiveMonitoringContent(
                                 Text(text = "Pitch: ${String.format(Locale.US, "%.1f", uiState.faceFrame.pitchDeg)}°", fontSize = 12.sp)
                                 Text(text = "State: ${uiState.state.name} (${uiState.level.name})", fontSize = 12.sp)
                             }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(text = "Pitch (rel): ${String.format(Locale.US, "%.1f", uiState.metrics?.relPitchDeg ?: 0f)}°", fontSize = 12.sp)
+                                Text(text = "Yawns:${uiState.metrics?.yawnCount ?: 0}", fontSize = 12.sp)
+                            }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,

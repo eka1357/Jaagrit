@@ -14,7 +14,11 @@ data class Baseline(
     val blinkRate: Float = 0f, // blinks per minute
     val responseLatencyMs: Long = 0L,
     val calibratedAtMs: Long = 0L,
-    val isValid: Boolean = true
+    val isValid: Boolean = true,
+    // Head pitch while looking ahead at the dashboard mount; droop is measured relative to this (D18)
+    val neutralPitchDeg: Float = 0f,
+    // Wide-open yawn MAR from calibration, or the default when the yawn step was skipped (D18)
+    val yawnMar: Float = Config.DEFAULT_BASELINE_YAWN_MAR
 ) {
     /** Difference between open and closed eye aspect ratios */
     val earGap: Float get() = openEar - closedEar

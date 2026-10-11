@@ -109,7 +109,11 @@ data class EngineMetrics(
     val perclos: Double,
     val blinkRatePerMin: Double,
     // null while the in-drive blink baseline is still being learned (first 3 min, CAL-2)
-    val blinkBaselinePerMin: Float?
+    val blinkBaselinePerMin: Float?,
+    // Head pitch minus the calibrated neutral pitch (D18)
+    val relPitchDeg: Float = 0f,
+    // Yawns within the rolling yawn window (D18)
+    val yawnCount: Int = 0
 )
 
 data class EngineOutput(

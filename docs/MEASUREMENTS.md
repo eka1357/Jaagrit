@@ -87,6 +87,10 @@ Quiet: __/5   Noisy: __/5   Latency: ____ ms
 | 2026-10-10 | DEFAULT_BASELINE_OPEN_EAR | 0.28 | 0.32 | AUDIT-018: Isotropic pixel-space EAR calculation (aspect-ratio independent) |
 | 2026-10-10 | DEFAULT_BASELINE_CLOSED_EAR | 0.05 | 0.08 | AUDIT-018: Isotropic pixel-space EAR calculation |
 | 2026-10-10 | DEFAULT_BASELINE_THRESHOLD | 0.165 | 0.200 | AUDIT-018: Midpoint in isotropic pixel space |
+| 2026-10-11 | HEAD_PITCH_DEG (meaning) | 15° absolute | 15° relative to calibrated neutral | Neutral dashboard pitch measured ~7–9° above; absolute check fired on a ~7° nod (D18) |
+| 2026-10-11 | EAR_HYSTERESIS_FRACTION | — | 0.10 | New (D18): stops near-threshold flicker; defaults, verify on phone |
+| 2026-10-11 | EYE_REOPEN_CONFIRM_MS | — | 100 | New (D18): ~2–3 frames at 24.8 FPS |
+| 2026-10-11 | YAWN_* (MIN_MAR 0.30, MIN_MS 1500, DIP_TOLERANCE_MS 100, WINDOW_MS 300000, L1_COUNT 2) | — | see Config.kt | New (D18): unmeasured defaults, verify talking/singing on phone |
 
 ## Numbers approved for slides
 - FaceLandmarker Inference: **18 ms** (Snapdragon 8 Elite CPU on iQOO 15)

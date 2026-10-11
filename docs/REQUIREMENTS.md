@@ -17,7 +17,7 @@ Cut order if time runs out (first to cut at the bottom): see end of file.
 | ID | Pri | Requirement |
 |---|---|---|
 | CAL-1 | P0 | Record open-eye EAR (10 s) and closed-eye EAR (3 s); threshold = closedMedian + 0.5 × (openMedian − closedMedian). Ignore the first second of each phase (reaction time). Use median everywhere for all baselines (EAR, blink rate, MAR, latency), never mean (D4). See also `QUICK_CALIBRATION` flag (D9). |
-| CAL-2 | P1 | Record yawn MAR baseline, head-pose range, baseline blink rate median (refine during first 3 min of driving) |
+| CAL-2 | P1 | Record yawn MAR baseline, head-pose range, baseline blink rate median (refine during first 3 min of driving). M13: yawn MAR drives the yawn L1 signal; neutral pitch from the look-normal phase makes head droop relative (D18) |
 | CAL-3 | P1 | One math question sets the driver's baseline response time (median) |
 | CAL-4 | P0 | Baseline persisted (DataStore); "Recalibrate" available anytime |
 
